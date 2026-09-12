@@ -10,15 +10,25 @@ import PgBoss from 'pg-boss';
  *
  * - AGENT_RUN: one agent's turn through the LLM tool-use loop (PLAN.md
  *   §4.1). Implemented in Phase 1 - see ./runExecutor.ts.
- * - LIBRARIAN_INGEST: wiki + knowledge-graph ingestion of a run/artifact/
- *   message (PLAN.md §4.4/§4.5). Implemented in Phase 3.
- * - WIKI_LINT: the scheduled contradiction/orphan-page/stale-fact sweep
- *   (PLAN.md §4.5). Implemented in Phase 3.
+ * - LIBRARIAN_INGEST: wiki + knowledge-graph ingestion of one finished,
+ *   task-scoped run (PLAN.md §4.4/§4.5). Implemented in Phase 3 - see
+ *   ./runExecutor.ts (the enqueue side) and @katnor/knowledge's
+ *   librarian.ts (the handler logic, wired up by apps/worker).
+ * - WIKI_LINT: the contradiction/orphan-page/stale-fact/missing-page sweep
+ *   (PLAN.md §4.5). Implemented in Phase 3 - see @katnor/knowledge's
+ *   wikiLint.ts. Triggered manually (apps/server's `knowledge.lintProject`)
+ *   for now; real scheduling ("weekly wiki lint") is PLAN.md Phase 5.
+ * - CODE_INDEX: the heuristic import-graph indexer over a project's
+ *   configured repos (PLAN.md §4.4's code indexer). Implemented in
+ *   Phase 3 - see @katnor/knowledge's codeIndexer.ts. Triggered manually
+ *   (apps/server's `knowledge.reindexCode`) - PLAN.md's "incremental, per
+ *   commit" automatic triggering is deferred, same reasoning as WIKI_LINT.
  */
 export const QUEUES = {
   AGENT_RUN: 'agent-run',
   LIBRARIAN_INGEST: 'librarian-ingest',
   WIKI_LINT: 'wiki-lint',
+  CODE_INDEX: 'code-index',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];

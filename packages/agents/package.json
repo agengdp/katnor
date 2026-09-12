@@ -12,6 +12,7 @@
     "@katnor/artifacts": "workspace:*",
     "@katnor/core": "workspace:*",
     "@katnor/db": "workspace:*",
+    "@katnor/knowledge": "workspace:*",
     "@katnor/llm": "workspace:*",
     "@katnor/tools": "workspace:*",
     "pg-boss": "^10.1.0"

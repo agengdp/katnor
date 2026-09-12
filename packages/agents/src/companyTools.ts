@@ -2,6 +2,7 @@ import type { ArtifactKind, AskHumanPayload, TaskPriority } from '@katnor/core';
 import { ARTIFACT_KINDS, DEFAULT_BOARD_COLUMNS, TASK_PRIORITIES } from '@katnor/core';
 import { saveArtifact } from '@katnor/artifacts';
 import { agentRepo, approvalRepo, artifactRepo, channelRepo, eventRepo, messageRepo, projectRepo, taskRepo } from '@katnor/db';
+import { answerWithCitations, searchKnowledge } from '@katnor/knowledge';
 import type { ToolDefinition } from '@katnor/tools';
 import type { AgentToolContext } from './context.js';
 import { postMessage } from './messaging.js';
@@ -428,6 +429,58 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
         attachments: [{ artifact_id: artifact.id }],
       });
       return { content: `Sent review request for "${artifact.title}" to ${colleague.name} (message ${created.id}).` };
+    },
+  },
+
+  {
+    name: 'search_knowledge',
+    description:
+      "Search this project's knowledge graph and wiki for relevant facts, decisions, modules, and people. Use this before starting unfamiliar work, or when you're not sure something has already been decided.",
+    inputSchema: {
+      type: 'object',
+      properties: { query: { type: 'string' } },
+      required: ['query'],
+      additionalProperties: false,
+    },
+    async execute(input, ctx) {
+      const query = str(input, 'query');
+      if (!query) {
+        return { content: 'search_knowledge requires query.', isError: true };
+      }
+      if (!ctx.project) {
+        return { content: 'search_knowledge requires a project - this run has no task/project context.', isError: true };
+      }
+      const hits = await searchKnowledge(ctx.project.id, query);
+      if (hits.length === 0) {
+        return { content: 'No results in this project\'s wiki or knowledge graph for that yet.' };
+      }
+      return {
+        content: hits
+          .map((hit) => `[${hit.kind}:${hit.id}] ${hit.title}${hit.snippet ? ` - ${hit.snippet}` : ''} (score ${hit.score.toFixed(2)})`)
+          .join('\n'),
+      };
+    },
+  },
+
+  {
+    name: 'ask_wiki',
+    description: "Ask a question and get a cited answer from this project's wiki and knowledge graph.",
+    inputSchema: {
+      type: 'object',
+      properties: { question: { type: 'string' } },
+      required: ['question'],
+      additionalProperties: false,
+    },
+    async execute(input, ctx) {
+      const question = str(input, 'question');
+      if (!question) {
+        return { content: 'ask_wiki requires question.', isError: true };
+      }
+      if (!ctx.project) {
+        return { content: 'ask_wiki requires a project - this run has no task/project context.', isError: true };
+      }
+      const result = await answerWithCitations(ctx.project.id, question);
+      return { content: result.answer };
     },
   },
 ];

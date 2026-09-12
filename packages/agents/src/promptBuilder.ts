@@ -1,8 +1,10 @@
-import type { agentRepo, messageRepo, taskRepo } from '@katnor/db';
+import type { agentRepo, messageRepo, projectRepo, taskRepo } from '@katnor/db';
 import type { RunTrigger } from '@katnor/core';
+import { readPage } from '@katnor/knowledge';
 
 type AgentRow = Awaited<ReturnType<typeof agentRepo.getById>>;
 type TaskRow = Awaited<ReturnType<typeof taskRepo.getById>>;
+type ProjectRow = Awaited<ReturnType<typeof projectRepo.getById>>;
 type MessageRow = Awaited<ReturnType<typeof messageRepo.list>>[number];
 
 /**
@@ -26,9 +28,10 @@ type MessageRow = Awaited<ReturnType<typeof messageRepo.list>>[number];
  *                                    volatile, so it stays outside the
  *                                    cache breakpoint)
  *
- * Memory notes and a wiki index (also part of "working context" per
- * PLAN.md 4.1) don't exist yet - the memory tool and the wiki are Phase 3 -
- * so step 4 below is just the task card and recent channel messages.
+ * Memory notes (also part of "working context" per PLAN.md 4.1) don't
+ * exist yet - the memory tool is a later phase. The wiki index landed in
+ * Phase 3 (§4.4/§4.5) - see `buildInitialUserMessage`'s use of
+ * @katnor/knowledge's `readPage` below.
  */
 
 export interface BuildPromptInput {
@@ -37,6 +40,8 @@ export interface BuildPromptInput {
   /** The resolved name of `agent.reports_to`, if any - just for a friendlier persona line. */
   managerName: string | null;
   task: NonNullable<TaskRow> | null;
+  /** Loaded whenever `task.project_id` resolves - used to pull the project's wiki index into working context. */
+  project: NonNullable<ProjectRow> | null;
   /** Oldest-first, already scoped to the channel this run is about (if any). */
   recentMessages: MessageRow[];
   trigger: RunTrigger;
@@ -59,6 +64,9 @@ export function buildSystemPrompt(input: BuildPromptInput): string {
     '- Prefer making progress over talking about making progress. If a conversation goes back and forth',
     "  more than a couple of times without a task's status changing, stop and either decide something or",
     '  escalate instead of continuing to discuss it.',
+    "- Before starting unfamiliar work, use search_knowledge to check the project's wiki and knowledge",
+    '  graph for relevant prior decisions, modules, or context - and use ask_wiki when you have a specific',
+    '  question a person might already know the answer to. Both are free to call as often as useful.',
     '- Only ask the human owner a question (via ask_human) when you are genuinely blocked and no colleague',
     '  can unblock you - it pauses your work until they answer, so use it sparingly and ask a specific,',
     '  answerable question.',
@@ -98,7 +106,17 @@ const TRIGGER_DESCRIPTIONS: Record<RunTrigger, string> = {
   schedule: 'This is a scheduled check-in.',
 };
 
-export function buildInitialUserMessage(input: BuildPromptInput): string {
+const MAX_WIKI_INDEX_CHARS = 1500;
+
+/** A short excerpt of the project's wiki index (see @katnor/knowledge's wikiStorage.ts), if one exists yet - PLAN.md 4.1's "working context" includes "wiki index". */
+async function renderWikiIndex(project: NonNullable<BuildPromptInput['project']> | null): Promise<string | null> {
+  if (!project) return null;
+  const index = await readPage(project.id, 'index.md');
+  if (!index || index.trim().length === 0) return null;
+  return index.length > MAX_WIKI_INDEX_CHARS ? `${index.slice(0, MAX_WIKI_INDEX_CHARS)}\n...(truncated - use search_knowledge/ask_wiki for more)` : index;
+}
+
+export async function buildInitialUserMessage(input: BuildPromptInput): Promise<string> {
   const parts: string[] = [];
 
   if (input.task) {
@@ -112,6 +130,11 @@ export function buildInitialUserMessage(input: BuildPromptInput): string {
         .filter((line): line is string => Boolean(line))
         .join('\n'),
     );
+  }
+
+  const wikiIndex = await renderWikiIndex(input.project);
+  if (wikiIndex) {
+    parts.push(`## Project wiki index\n${wikiIndex}`);
   }
 
   if (input.recentMessages.length > 0) {

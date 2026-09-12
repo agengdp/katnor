@@ -6,6 +6,7 @@ import type PgBoss from 'pg-boss';
 import type { AgentToolContext } from './context.js';
 import { loadAgentMcpTools } from './mcpTools.js';
 import { buildInitialUserMessage, buildSystemPrompt } from './promptBuilder.js';
+import { QUEUES } from './queues.js';
 import { agentToolRegistry, DEFAULT_COMPANY_TOOL_NAMES } from './registry.js';
 
 /**
@@ -84,12 +85,13 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     agent,
     managerName: manager?.name ?? null,
     task: task ?? null,
+    project,
     recentMessages,
     trigger: run.trigger,
     triggerNote,
   };
   const systemPrompt = buildSystemPrompt(promptInput);
-  const initialUserText = buildInitialUserMessage(promptInput);
+  const initialUserText = await buildInitialUserMessage(promptInput);
 
   const toolNames = agent.tool_allowlist.length > 0 ? agent.tool_allowlist : DEFAULT_COMPANY_TOOL_NAMES;
   // MCP tools (PLAN.md 4.3) are discovered live per run from whatever
@@ -287,4 +289,13 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     type: 'run.finished',
     payload: { run_id: runId, agent_id: agent.id, status: outcome, cost_usd: costUsd },
   });
+
+  // PLAN.md 4.4/4.5: "after each run ... an extraction call ... ingester
+  // upserts nodes". Only a succeeded, task-scoped run has anything
+  // project-level worth filing into the wiki/knowledge graph - see
+  // @katnor/knowledge's librarian.ts, which re-checks task_id itself and
+  // no-ops if it's still missing (defensive, not load-bearing here).
+  if (outcome === 'succeeded' && run.task_id) {
+    await boss.send(QUEUES.LIBRARIAN_INGEST, { runId });
+  }
 }
