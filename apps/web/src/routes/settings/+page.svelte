@@ -1,6 +1,6 @@
 <script lang="ts">
-  import { MODEL_PROVIDERS, type ModelProvider, type ToolConfigKind } from '@katnor/core';
-  import { trpc } from '$lib/trpc';
+  import { APPROVAL_MODES, MODEL_PROVIDERS, type ApprovalMode, type ModelProvider, type ToolConfigKind } from '@katnor/core';
+  import { serverOrigin, trpc } from '$lib/trpc';
 
   type ProviderRow = {
     provider: ModelProvider;
@@ -274,6 +274,89 @@
       await loadSecrets();
     } catch (err) {
       secretsError = describeError(err);
+    }
+  }
+
+  // ─── Budgets & approval policy ──────────────────────────────────────────
+
+  const approvalModeLabels: Record<ApprovalMode, string> = {
+    auto: 'Auto (never ask)',
+    ask_once_per_project: 'Ask once per project',
+    always_ask: 'Always ask'
+  };
+
+  let companyDailyUsd = $state(0);
+  // Plain text, not `type="number"` + `number | null`, deliberately: an
+  // empty numeric input binds to 0 in Svelte, not null, which would make
+  // "leave it blank for no cap" silently save a real $0/day cap instead.
+  let projectDailyUsdText = $state('');
+  let agentDailyUsdText = $state('');
+  let hirePolicy = $state<ApprovalMode>('always_ask');
+  let toolCallPolicy = $state<ApprovalMode>('auto');
+  let spendPolicy = $state<ApprovalMode>('ask_once_per_project');
+
+  let budgetsLoading = $state(true);
+  let budgetsError = $state<string | null>(null);
+  let savingBudgets = $state(false);
+  let budgetsSaved = $state(false);
+  let savingPolicy = $state(false);
+  let policySaved = $state(false);
+
+  async function loadCompanySettings() {
+    budgetsLoading = true;
+    budgetsError = null;
+    try {
+      const settings = await trpc().settings.getCompanySettings.query();
+      companyDailyUsd = settings.budgets.company_daily_usd;
+      projectDailyUsdText = settings.budgets.project_daily_usd !== undefined ? String(settings.budgets.project_daily_usd) : '';
+      agentDailyUsdText = settings.budgets.agent_daily_usd !== undefined ? String(settings.budgets.agent_daily_usd) : '';
+      hirePolicy = settings.approval_policy.hire;
+      toolCallPolicy = settings.approval_policy.tool_call;
+      spendPolicy = settings.approval_policy.spend;
+    } catch (err) {
+      budgetsError = describeError(err);
+    } finally {
+      budgetsLoading = false;
+    }
+  }
+
+  $effect(() => {
+    loadCompanySettings();
+  });
+
+  async function saveBudgets(event: SubmitEvent) {
+    event.preventDefault();
+    savingBudgets = true;
+    budgetsError = null;
+    budgetsSaved = false;
+    try {
+      const trimmedProject = projectDailyUsdText.trim();
+      const trimmedAgent = agentDailyUsdText.trim();
+      await trpc().settings.updateBudgets.mutate({
+        company_daily_usd: companyDailyUsd,
+        project_daily_usd: trimmedProject === '' ? undefined : Number(trimmedProject),
+        agent_daily_usd: trimmedAgent === '' ? undefined : Number(trimmedAgent)
+      });
+      budgetsSaved = true;
+    } catch (err) {
+      budgetsError = describeError(err);
+    } finally {
+      savingBudgets = false;
+    }
+  }
+
+  async function savePolicy(event: SubmitEvent) {
+    event.preventDefault();
+    savingPolicy = true;
+    budgetsError = null;
+    policySaved = false;
+    try {
+      await trpc().settings.updateApprovalPolicy.mutate({ hire: hirePolicy, tool_call: toolCallPolicy, spend: spendPolicy });
+      policySaved = true;
+    } catch (err) {
+      budgetsError = describeError(err);
+    } finally {
+      savingPolicy = false;
     }
   }
 </script>
@@ -556,5 +639,144 @@
         </button>
       </div>
     </form>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold">Budgets & approval policy</h2>
+      <button
+        type="button"
+        class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+        onclick={loadCompanySettings}
+        disabled={budgetsLoading}
+      >
+        {budgetsLoading ? 'Loading…' : 'Reload'}
+      </button>
+    </div>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Daily budgets are hard stops (PLAN.md's Phase 5) - a run that would push the company or its own
+      agent over their daily budget is cancelled rather than started. Leave project/agent blank for no
+      per-project/per-agent cap beyond each agent's own budget (set per-agent on the Team page).
+    </p>
+
+    {#if budgetsError}
+      <p class="text-sm text-[var(--color-danger)]">{budgetsError}</p>
+    {/if}
+
+    <form
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      onsubmit={saveBudgets}
+    >
+      <h3 class="text-sm font-semibold">Budgets (USD/day)</h3>
+      <div class="grid gap-3 sm:grid-cols-3">
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Company-wide</span>
+          <input
+            type="number"
+            min="0"
+            step="0.01"
+            required
+            bind:value={companyDailyUsd}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Per project (optional)</span>
+          <input
+            type="text"
+            inputmode="decimal"
+            placeholder="No cap"
+            bind:value={projectDailyUsdText}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Default per agent (optional)</span>
+          <input
+            type="text"
+            inputmode="decimal"
+            placeholder="No cap"
+            bind:value={agentDailyUsdText}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+      </div>
+      {#if budgetsSaved}
+        <p class="text-sm text-[var(--color-success)]">Saved.</p>
+      {/if}
+      <div>
+        <button
+          type="submit"
+          disabled={savingBudgets}
+          class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {savingBudgets ? 'Saving…' : 'Save budgets'}
+        </button>
+      </div>
+    </form>
+
+    <form
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      onsubmit={savePolicy}
+    >
+      <h3 class="text-sm font-semibold">Approval policy</h3>
+      <div class="grid gap-3 sm:grid-cols-3">
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Hiring</span>
+          <select bind:value={hirePolicy} class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm">
+            {#each APPROVAL_MODES as mode (mode)}
+              <option value={mode}>{approvalModeLabels[mode]}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Dangerous tool calls (e.g. git push)</span>
+          <select bind:value={toolCallPolicy} class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm">
+            {#each APPROVAL_MODES as mode (mode)}
+              <option value={mode}>{approvalModeLabels[mode]}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Spend beyond budget</span>
+          <select bind:value={spendPolicy} class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm">
+            {#each APPROVAL_MODES as mode (mode)}
+              <option value={mode}>{approvalModeLabels[mode]}</option>
+            {/each}
+          </select>
+        </label>
+      </div>
+      {#if policySaved}
+        <p class="text-sm text-[var(--color-success)]">Saved.</p>
+      {/if}
+      <div>
+        <button
+          type="submit"
+          disabled={savingPolicy}
+          class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {savingPolicy ? 'Saving…' : 'Save policy'}
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <h2 class="text-lg font-semibold">Backups</h2>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Downloads a single JSON file with every core table (company, teams, agents, projects, tasks,
+      runs, messages, the knowledge graph, wiki pages, ...) plus every project's wiki files.
+      Provider/secret values are never included - only whether one is set. Artifact file bytes
+      (PRs, diffs, screenshots) aren't included either, just their metadata; the underlying storage
+      backend (local disk or MinIO) needs its own backup.
+    </p>
+    <div>
+      <a
+        href={`${serverOrigin()}/export/backup`}
+        class="inline-block rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)]"
+      >
+        Download backup
+      </a>
+    </div>
   </section>
 </div>

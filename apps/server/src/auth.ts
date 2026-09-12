@@ -134,11 +134,12 @@ export function attemptOwnerLogin(password: string): string | null {
 
 /**
  * Hono middleware that 401s unless the `katnor_session` cookie holds a
- * valid, unexpired session token. Not currently mounted on any route in
- * src/index.ts (v1's only HTTP surface is `/trpc/*`, which enforces auth
- * per-procedure via `protectedProcedure` in src/trpc/trpc.ts instead) - it
- * is exported for future plain HTTP routes that need the same check
- * outside of tRPC, e.g. artifact/file downloads in a later phase.
+ * valid, unexpired session token. Most of v1's HTTP surface is `/trpc/*`,
+ * which enforces auth per-procedure via `protectedProcedure` in
+ * src/trpc/trpc.ts instead - this is for the plain HTTP routes that need
+ * the same check outside of tRPC, e.g. Phase 5's `/export/backup` (see
+ * src/index.ts), a file download that doesn't fit tRPC's request/response
+ * shape.
  */
 export const requireAuth: MiddlewareHandler = async (c, next) => {
   const token = readCookie(c.req.header('cookie'), SESSION_COOKIE_NAME);

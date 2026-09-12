@@ -4,6 +4,8 @@ import { artifactRepo } from '@katnor/db';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
+import { requireAuth } from './auth.js';
+import { buildBackupExport } from './backup.js';
 import { env } from './env.js';
 import { createContext } from './trpc/context.js';
 import { appRouter } from './trpc/router.js';
@@ -48,6 +50,26 @@ app.get('/artifacts/raw/:key', async (c) => {
   const row = await artifactRepo.getByStorageKey(key);
   c.header('Content-Type', row?.mime ?? 'application/octet-stream');
   return c.body(content);
+});
+
+/**
+ * PLAN.md Phase 5's "backups/export" (Settings > Backups: a "Download
+ * backup" link, apps/web/src/routes/settings/+page.svelte). A plain
+ * `<a href>` GET rather than a tRPC procedure: tRPC's request/response path
+ * is built around small JSON payloads and doesn't have a "stream this back
+ * as a file download" mode, and a multi-table export is exactly the kind
+ * of payload that doesn't belong going through it. Gated by `requireAuth`
+ * (unlike /artifacts/raw above, which serves already-public artifact
+ * bytes) - a backup bundles every table's data, so it needs the same login
+ * check every settings.* tRPC procedure already enforces via
+ * `protectedProcedure`.
+ */
+app.get('/export/backup', requireAuth, async (c) => {
+  const backup = await buildBackupExport();
+  const filename = `katnor-backup-${backup.exported_at.slice(0, 10)}.json`;
+  c.header('Content-Type', 'application/json');
+  c.header('Content-Disposition', `attachment; filename="${filename}"`);
+  return c.body(JSON.stringify(backup, null, 2));
 });
 
 /**
