@@ -1,4 +1,6 @@
 import { serve } from '@hono/node-server';
+import { getStorage } from '@katnor/artifacts';
+import { artifactRepo } from '@katnor/db';
 import { fetchRequestHandler } from '@trpc/server/adapters/fetch';
 import { Hono } from 'hono';
 import { cors } from 'hono/cors';
@@ -26,6 +28,27 @@ app.use(
 );
 
 app.get('/health', (c) => c.json({ ok: true }));
+
+/**
+ * Serves artifact bytes stored by @katnor/artifacts' `LocalFsStorage`
+ * (dev/host mode) - this is the exact path `LocalFsStorage.getUrl` hands
+ * back (PLAN.md 4.6). In S3/MinIO mode `getArtifactUrl` instead returns a
+ * presigned URL the browser hits directly, bypassing this route entirely,
+ * but `getStorage().get(key)` works against either backend, so this stays
+ * correct regardless of `ARTIFACT_STORAGE`.
+ */
+app.get('/artifacts/raw/:key', async (c) => {
+  const key = c.req.param('key');
+  let content: Buffer;
+  try {
+    content = await getStorage().get(key);
+  } catch {
+    return c.notFound();
+  }
+  const row = await artifactRepo.getByStorageKey(key);
+  c.header('Content-Type', row?.mime ?? 'application/octet-stream');
+  return c.body(content);
+});
 
 /**
  * tRPC-on-Hono wiring: tRPC v10's own `@trpc/server/adapters/fetch` adapter

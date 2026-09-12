@@ -1,14 +1,17 @@
 import { agentsRouter } from './routers/agents.js';
 import { approvalsRouter } from './routers/approvals.js';
+import { artifactsRouter } from './routers/artifacts.js';
 import { authRouter } from './routers/auth.js';
 import { channelsRouter } from './routers/channels.js';
 import { healthRouter } from './routers/health.js';
 import { messagesRouter } from './routers/messages.js';
 import { projectsRouter } from './routers/projects.js';
 import { runsRouter } from './routers/runs.js';
+import { secretsRouter } from './routers/secrets.js';
 import { settingsRouter } from './routers/settings.js';
 import { tasksRouter } from './routers/tasks.js';
 import { teamsRouter } from './routers/teams.js';
+import { toolConfigsRouter } from './routers/toolConfigs.js';
 import { router } from './trpc.js';
 
 // No `superjson` (or other) transformer is configured: it isn't in this
@@ -28,6 +31,9 @@ export const appRouter = router({
   messages: messagesRouter,
   runs: runsRouter,
   approvals: approvalsRouter,
+  artifacts: artifactsRouter,
+  toolConfigs: toolConfigsRouter,
+  secrets: secretsRouter,
 });
 
 /**
