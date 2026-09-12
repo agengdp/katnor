@@ -23,7 +23,13 @@ export interface Zone {
 export const CANVAS_WIDTH = 960;
 export const CANVAS_HEIGHT = 600;
 
-export const RECEPTION: Point = { x: 90, y: 100 };
+// Kept clearly below/outside the "reception" zone's own clickable rect
+// (x:30-140, y:30-120 below) and its label/bubble space - an agent
+// standing here must never overlap the zone box itself, or a click meant
+// to select them (or hover them) would always resolve to the zone's
+// navigate-to-/inbox instead. See office/+page.svelte's `zoneAt`/`agentAt`
+// hit-testing, checked in that priority order.
+export const RECEPTION: Point = { x: 95, y: 200 };
 export const MEETING_ROOM: Point = { x: CANVAS_WIDTH / 2, y: 190 };
 export const MEETING_ROOM_SIZE = { width: 200, height: 110 };
 

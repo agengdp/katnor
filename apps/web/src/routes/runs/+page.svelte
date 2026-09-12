@@ -108,6 +108,22 @@
   // "view full trace" link can deep-link straight to one agent's runs.
   let agentFilter = $state($page.url.searchParams.get('agent') ?? '');
 
+  // SvelteKit reuses this component instance for a same-route navigation
+  // (e.g. clicking "view trace" for a different agent while already on
+  // /runs, or browser back/forward) - the `$state()` initializer above
+  // only ever runs once, so without this the filter would silently stay
+  // on whichever agent was selected first. Comparing against the last URL
+  // value (rather than just re-reading it) is what keeps this from also
+  // stomping on a filter the owner picked by hand from the dropdown.
+  let lastUrlAgentFilter = agentFilter;
+  $effect(() => {
+    const urlAgentFilter = $page.url.searchParams.get('agent') ?? '';
+    if (urlAgentFilter !== lastUrlAgentFilter) {
+      lastUrlAgentFilter = urlAgentFilter;
+      agentFilter = urlAgentFilter;
+    }
+  });
+
   let runs = $state<RunRow[]>([]);
   let runsLoading = $state(true);
   let runsError = $state<string | null>(null);

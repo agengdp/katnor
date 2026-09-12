@@ -47,16 +47,31 @@ class LiveStatusStore {
   }
 
   /**
-   * Seeds an agent's status from its DB row (`agent.status`) the first
-   * time this store hears about it - so a paused/fired agent reads
-   * correctly even before this browser session has seen a live event
-   * about them. A no-op once any event (live or a prior seed) has already
-   * set something, since live data always wins over the DB snapshot.
+   * Reconciles an agent's status with its DB row (`agent.status`) - called
+   * every time a page (re-)loads its agent list, including on every
+   * `agent.updated` refresh, not just the first time. Two things this
+   * needs to get right, since DB status and live event state are two
+   * different sources of truth for overlapping information:
+   *
+   *   - A paused/fired agent should always read `offline`, even before
+   *     this browser session has seen a live event about them, so this
+   *     unconditionally sets `offline` when `dbStatus !== 'active'`.
+   *   - Once un-paused/re-hired (`dbStatus === 'active'` again), a stale
+   *     `offline` left over from before must be cleared back to `idle` -
+   *     nothing else does this, since `agent.updated`'s event payload
+   *     doesn't carry the new status for `handle()` to react to directly.
+   *     Any OTHER live state (working/talking/waiting_human/blocked) is
+   *     left untouched here, since that's live data actively being
+   *     correct, not a stale leftover.
    */
   seedFromAgentStatus(agentId: string, dbStatus: 'active' | 'paused' | 'offline'): void {
-    if (agentId in this.statuses) return;
     if (dbStatus !== 'active') {
       this.set(agentId, { state: 'offline', detail: null, taskId: null, runId: null });
+      return;
+    }
+    const existing = this.statuses[agentId];
+    if (!existing || existing.state === 'offline') {
+      this.set(agentId, { state: 'idle', detail: null, taskId: null, runId: null });
     }
   }
 
