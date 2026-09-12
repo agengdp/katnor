@@ -1,4 +1,4 @@
-import { and, desc, eq } from 'drizzle-orm';
+import { and, desc, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../client.js';
 import { run } from '../schema/index.js';
 import { ulid } from '../ulid.js';
@@ -64,4 +64,13 @@ export async function list(filter: ListRunsFilter = {}): Promise<RunRow[]> {
     .where(and(...conditions))
     .orderBy(desc(run.started_at))
     .limit(200);
+}
+
+/** Total `cost_usd` across every run started at or after `since` - the header cost meter and the office's day/night tint (PLAN.md 4.8/4.9) both want "spend so far today". */
+export async function sumCostSince(since: Date): Promise<number> {
+  const [row] = await db
+    .select({ total: sql<string>`coalesce(sum(${run.cost_usd}), 0)` })
+    .from(run)
+    .where(gte(run.started_at, since));
+  return Number(row?.total ?? 0);
 }
