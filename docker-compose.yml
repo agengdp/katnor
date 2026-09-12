@@ -57,6 +57,20 @@ services:
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://katnor:katnor@postgres:5432/katnor}
       SERVER_PORT: ${SERVER_PORT:-3001}
+      # Artifacts v1 (PLAN.md 4.6) - the raw-serving route
+      # (apps/server/src/index.ts's `/artifacts/raw/:key`) and every
+      # artifacts.* tRPC procedure read through @katnor/artifacts'
+      # `getStorage()`, which reads these directly rather than through
+      # apps/server's own zod-validated env.ts. Compose defaults to `s3`
+      # since minio is already running as a sibling service here;
+      # .env.example's own default (for a bare `pnpm dev` with no compose)
+      # is `local`.
+      ARTIFACT_STORAGE: ${ARTIFACT_STORAGE:-s3}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:-katnor-artifacts}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-katnor}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-katnor-dev-secret}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
     ports:
       - "${SERVER_PORT:-3001}:${SERVER_PORT:-3001}"
     networks:
@@ -74,6 +88,30 @@ services:
       - .env
     environment:
       DATABASE_URL: ${DATABASE_URL:-postgresql://katnor:katnor@postgres:5432/katnor}
+      ARTIFACT_STORAGE: ${ARTIFACT_STORAGE:-s3}
+      MINIO_ENDPOINT: http://minio:9000
+      MINIO_BUCKET: ${MINIO_BUCKET:-katnor-artifacts}
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-katnor}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-katnor-dev-secret}
+      MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      # Workspaces (PLAN.md 4.3) - `SANDBOX_MODE=docker` (the default) makes
+      # @katnor/tools' DockerWorkspaceManager start one container per
+      # project via the Docker socket mounted below; set `host` to instead
+      # use plain local directories under WORKSPACE_HOST_DIR (dev-only, no
+      # isolation - see @katnor/tools/src/workspace/host.ts).
+      SANDBOX_MODE: ${SANDBOX_MODE:-docker}
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-katnor-sandbox:latest}
+      WORKSPACE_HOST_DIR: ${WORKSPACE_HOST_DIR:-/tmp/katnor-workspaces}
+    volumes:
+      # Lets the worker's dockerode client manage per-project workspace
+      # containers on the *host's* Docker daemon (DockerWorkspaceManager -
+      # see @katnor/tools/src/workspace/docker.ts) - the worker container
+      # itself never runs workloads directly, it only orchestrates sibling
+      # containers alongside itself. Grants the worker container
+      # effectively root-equivalent control over the host's Docker daemon;
+      # acceptable for a self-hosted, single-owner app, same trust model as
+      # every other "give the agent runner a Docker socket" tool.
+      - /var/run/docker.sock:/var/run/docker.sock
     networks:
       - katnor
 

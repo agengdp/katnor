@@ -27,3 +27,8 @@ The full build plan is in [PLAN.md](./PLAN.md).
    `db:post-migrate` (enables the `pgvector` extension and installs the event-notify trigger the
    server's WebSocket layer depends on), then `db:seed`.
 5. Start everything in dev mode: `pnpm dev`.
+6. (Optional - only needed for the `shell`/`claude_code` work tools, PLAN.md 4.3) Build the
+   per-project sandbox image: `docker build -t katnor-sandbox:latest -f sandbox/Dockerfile .`. Without
+   it (or with `SANDBOX_MODE=host` in `.env`, which skips Docker entirely and runs those tools
+   against a plain local directory - dev-only, no isolation), those two tools simply fail until
+   either is set up.

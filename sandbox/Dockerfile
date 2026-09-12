@@ -18,13 +18,18 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
     && rm -rf /var/lib/apt/lists/*
 
-# TODO: install the Claude Agent SDK / Claude Code CLI once this can be
-# verified against the real npm registry (no network access in this
-# scaffolding sandbox):
-# RUN npm install -g @anthropic-ai/claude-agent-sdk @anthropic-ai/claude-code
+# The `claude_code` work tool (@katnor/agents' src/workTools.ts) runs this
+# CLI non-interactively via `docker exec` (DockerWorkspaceManager.exec) -
+# see that file's doc comment for why it goes through the CLI rather than
+# embedding @anthropic-ai/claude-agent-sdk's `query()` directly.
+# ANTHROPIC_API_KEY is forwarded per-exec by that same work tool (this
+# container has no other route to apps/worker's own env), so nothing needs
+# to be baked into this image for auth.
+RUN npm install -g @anthropic-ai/claude-code
 
-# TODO: install the Codex CLI once this can be verified against the real npm
-# registry:
+# Codex isn't one of Phase 2's implemented work tools (PLAN.md 4.3 scoped
+# this phase to shell/claude_code/GitHub MCP/web_search/web_fetch) - left
+# here as a TODO for whichever later phase adds it:
 # RUN npm install -g @openai/codex
 
 WORKDIR /workspace
