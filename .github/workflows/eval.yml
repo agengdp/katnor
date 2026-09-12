@@ -1,0 +1,108 @@
+name: Eval
+
+# PLAN.md Phase 5: "Eval harness: a set of scripted company tasks with
+# graded outcomes, run in CI against prompt and tool changes." Deliberately
+# a separate workflow from ci.yml (lint/format/typecheck/unit tests, which
+# run on every push): this one boots a real Postgres + worker and makes
+# real Anthropic API calls, so it only runs when something that could
+# plausibly change agent behavior actually changed, plus on-demand via
+# workflow_dispatch.
+on:
+  pull_request:
+    branches:
+      - "**"
+    paths:
+      - "packages/agents/**"
+      - "packages/llm/**"
+      - "packages/core/src/schemas/**"
+      - "packages/tools/**"
+      - "packages/eval/**"
+      - ".github/workflows/eval.yml"
+  workflow_dispatch: {}
+
+jobs:
+  eval:
+    runs-on: ubuntu-latest
+    # Forked-repo PRs never receive repository secrets, so ANTHROPIC_API_KEY
+    # is unset there - skip cleanly instead of failing every fork PR on a
+    # check this repo can't actually run for them. Requires
+    # ANTHROPIC_API_KEY to be added as a repository (or environment) secret
+    # for this to ever run at all. NOTE: referencing `secrets` directly in a
+    # job-level `if:` is a commonly used, documented pattern, but this
+    # workflow has never actually executed in a real GitHub Actions run in
+    # this sandbox (no way to trigger one here) - worth double-checking the
+    # first time this fires for real.
+    if: ${{ github.event_name == 'workflow_dispatch' || secrets.ANTHROPIC_API_KEY != '' }}
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_DB: katnor
+          POSTGRES_USER: katnor
+          POSTGRES_PASSWORD: katnor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U katnor -d katnor"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://katnor:katnor@localhost:5432/katnor
+      ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+      # No project in the eval's tasks uses shell/claude_code/codex, so no
+      # Docker-in-Docker workspace setup is needed - "host" mode just uses
+      # a plain local directory, which is never actually touched here.
+      SANDBOX_MODE: host
+      ARTIFACT_STORAGE: local
+      ARTIFACT_STORAGE_DIR: /tmp/katnor-eval-artifacts
+      WORKER_HEARTBEAT_MS: 30000
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # No ./drizzle migration directory is committed yet (see
+      # packages/db/README.md: it was hand-written without npm registry
+      # access to run drizzle-kit and verify its output). CI *does* have
+      # network access, so db:generate genuinely works here - it just
+      # generates a fresh migration from the current schema on every run
+      # rather than applying reviewed, version-controlled ones, which is
+      # fine for this ephemeral, always-empty CI database. Once a real
+      # ./drizzle directory is generated and committed, this step starts
+      # applying that instead automatically (drizzle-kit generate is a
+      # no-op when the schema hasn't changed since the last migration).
+      - name: Set up the database
+        working-directory: packages/db
+        run: |
+          pnpm db:generate
+          pnpm db:migrate
+          pnpm db:post-migrate
+          pnpm db:seed
+
+      # Runs in the background for the whole rest of the job; the eval
+      # script only enqueues jobs and polls the database for results, it
+      # does not execute any agent run itself.
+      - name: Start the worker
+        working-directory: apps/worker
+        run: |
+          pnpm exec tsx src/index.ts &
+          sleep 5
+
+      - name: Run the eval harness
+        working-directory: packages/eval
+        run: pnpm start
