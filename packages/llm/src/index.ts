@@ -1,4 +1,5 @@
 // @katnor/llm - provider adapters behind a common LLMProvider interface
-// (see ./types.ts). Anthropic, OpenAI-compatible, and Google are
-// implemented so far - see ./registry.ts's getProvider() doc comment.
+// (see ./types.ts). Every @katnor/core MODEL_PROVIDERS value (Anthropic,
+// OpenAI-compatible, Ollama, Google) is implemented - see ./registry.ts's
+// getProvider() doc comment.
 export * from './registry.js';

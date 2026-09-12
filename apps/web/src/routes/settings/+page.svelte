@@ -26,7 +26,7 @@
     anthropic: 'Defaults to https://api.anthropic.com - only set this for a proxy.',
     openai_compatible: 'e.g. https://api.openai.com/v1, or your own OpenAI-compatible endpoint.',
     google: 'Defaults to the Google AI API - only set this for a proxy.',
-    ollama: 'e.g. http://localhost:11434'
+    ollama: 'Defaults to http://localhost:11434/v1 (Ollama\'s own OpenAI-compatible endpoint) - only set this if Ollama runs elsewhere.'
   };
 
   function emptyRow(provider: ModelProvider): ProviderRow {

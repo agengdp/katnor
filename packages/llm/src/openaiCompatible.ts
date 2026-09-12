@@ -22,55 +22,83 @@ import type {
  * format itself (unlike Anthropic's beta surface) is stable and widely
  * documented enough to hand-roll with confidence.
  *
+ * PLAN.md 4.1 is explicit that this one adapter is meant to cover more
+ * than the literal "openai_compatible" `ModelProvider`: "The
+ * OpenAI-compatible adapter covers OpenAI, and any local server with the
+ * same wire format (Ollama, vLLM)." Ollama's own `/v1/chat/completions`
+ * shim is exactly that same wire format, so rather than duplicating this
+ * whole file for a second `ModelProvider` value, ./registry.ts constructs
+ * two instances of this same class - one per `provider` constructor arg -
+ * each reading its own `provider_config` row (`"openai_compatible"` or
+ * `"ollama"`) and reporting its own `id`.
+ *
  * Unlike ./anthropic.ts, this adapter has no per-model profile table:
- * "OpenAI-compatible" covers arbitrary third-party servers whose exact
- * capabilities this codebase can't enumerate, so it always requests the
- * lowest common denominator (no thinking, no effort, no task budget, no
- * prompt caching) and never guesses at a model-specific quirk.
+ * an arbitrary third-party/self-hosted server's exact capabilities can't
+ * be enumerated ahead of time, so it always requests the lowest common
+ * denominator (no thinking, no effort, no task budget, no prompt caching)
+ * and never guesses at a model-specific quirk.
  *
  * Unlike ./anthropic.ts (whose key comes straight from
  * `ANTHROPIC_API_KEY`), this adapter's base URL / API key are company-wide
  * settings the owner enters in the dashboard's Settings > Providers section
  * (apps/server/src/trpc/routers/settings.ts's `upsertProvider`), stored on
- * the `provider_config` row for `"openai_compatible"` - the same row
- * `apps/server/src/modelCatalog.ts` already reads for Anthropic's model
- * catalog cache. There's no separate env var for this: `.env.example`'s
+ * the `provider_config` row for whichever `provider` this instance was
+ * constructed with. There's no separate env var for either: `.env.example`'s
  * "LLM providers" section explicitly calls out that only Anthropic's key
- * lives there, precisely so a non-OpenAI, non-embeddings
- * "openai_compatible" endpoint's credentials go through the encrypted
- * `provider_config`/`secret` store like everything else in Settings.
+ * lives there, precisely so a non-OpenAI, non-embeddings endpoint's
+ * credentials go through the encrypted `provider_config`/`secret` store
+ * like everything else in Settings.
  */
 
+/** The two `ModelProvider` values this one adapter serves - see the module doc comment above. */
+type OpenAiCompatibleProviderId = Extract<ModelProvider, 'openai_compatible' | 'ollama'>;
+
 /**
- * Reads and decrypts the `provider_config` row for "openai_compatible".
- * Never throws - every failure (missing/disabled/misconfigured row, a DB
- * error, or `decryptSecret` rejecting a corrupted/re-keyed ciphertext)
- * comes back as `{error}` instead, so `step()` below can turn it into a
- * clean `{stopReason: 'error'}` result rather than crash the run - the
- * same contract every other failure path in this file (and
- * ./anthropic.ts's `step()`) already follows.
+ * Reads and decrypts the `provider_config` row for `provider`. Never
+ * throws - every failure (missing/disabled/misconfigured row, a DB error,
+ * or `decryptSecret` rejecting a corrupted/re-keyed ciphertext) comes back
+ * as `{error}` instead, so `step()` below can turn it into a clean
+ * `{stopReason: 'error'}` result rather than crash the run - the same
+ * contract every other failure path in this file (and ./anthropic.ts's
+ * `step()`) already follows.
+ *
+ * `defaultBaseUrl`, when given, is used when the row leaves `base_url`
+ * unset - Ollama's registry entry passes its own well-known local default
+ * (see ./registry.ts) the way ./anthropic.ts and ./google.ts default to
+ * their own real APIs; plain "openai_compatible" has no sensible default
+ * (an arbitrary third-party endpoint can't be guessed at) and passes none,
+ * so a missing base URL there is a hard error instead.
  */
-async function readConfig(): Promise<{ baseUrl: string; apiKey: string | undefined } | { error: string }> {
+async function readConfig(
+  provider: OpenAiCompatibleProviderId,
+  defaultBaseUrl?: string,
+): Promise<{ baseUrl: string; apiKey: string | undefined } | { error: string }> {
   try {
-    const row = await providerConfigRepo.getByProvider('openai_compatible');
+    const row = await providerConfigRepo.getByProvider(provider);
     if (!row) {
-      return { error: 'No "openai_compatible" provider is configured yet - add a base URL under Settings > Providers.' };
+      if (defaultBaseUrl) return { baseUrl: defaultBaseUrl, apiKey: undefined };
+      return {
+        error: `No "${provider}" provider is configured yet - add a base URL under Settings > Providers.`,
+      };
     }
     if (!row.enabled) {
-      return { error: 'The "openai_compatible" provider is disabled in Settings > Providers.' };
+      return { error: `The "${provider}" provider is disabled in Settings > Providers.` };
     }
-    if (!row.base_url) {
-      return { error: 'The "openai_compatible" provider has no base URL configured in Settings > Providers.' };
+    const baseUrl = row.base_url ? row.base_url.replace(/\/+$/, '') : defaultBaseUrl;
+    if (!baseUrl) {
+      return {
+        error: `The "${provider}" provider has no base URL configured in Settings > Providers.`,
+      };
     }
     return {
-      baseUrl: row.base_url.replace(/\/+$/, ''),
+      baseUrl,
       // Self-hosted servers (vLLM, Ollama, ...) commonly need no auth at all -
       // an unset key isn't an error here, unlike a missing base URL.
       apiKey: row.api_key_encrypted ? decryptSecret(row.api_key_encrypted) : undefined,
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return { error: `Failed to load the "openai_compatible" provider config: ${message}` };
+    return { error: `Failed to load the "${provider}" provider config: ${message}` };
   }
 }
 
@@ -198,8 +226,22 @@ function errorResult(errorMessage: string): StepResult {
   };
 }
 
+/**
+ * Ollama's own well-known local default, with its OpenAI-compatible
+ * shim's `/v1` prefix - see this file's module doc comment.
+ */
+const OLLAMA_DEFAULT_BASE_URL = 'http://localhost:11434/v1';
+
 export class OpenAiCompatibleProvider implements LLMProvider {
-  readonly id: ModelProvider = 'openai_compatible';
+  readonly id: ModelProvider;
+  private readonly provider: OpenAiCompatibleProviderId;
+  private readonly defaultBaseUrl: string | undefined;
+
+  constructor(provider: OpenAiCompatibleProviderId) {
+    this.id = provider;
+    this.provider = provider;
+    this.defaultBaseUrl = provider === 'ollama' ? OLLAMA_DEFAULT_BASE_URL : undefined;
+  }
 
   capabilities(_model: string): ProviderCapabilities {
     // Deliberately the most conservative profile: an arbitrary third-party
@@ -218,7 +260,7 @@ export class OpenAiCompatibleProvider implements LLMProvider {
   }
 
   async step(input: StepInput): Promise<StepResult> {
-    const config = await readConfig();
+    const config = await readConfig(this.provider, this.defaultBaseUrl);
     if ('error' in config) {
       return errorResult(config.error);
     }
@@ -244,7 +286,7 @@ export class OpenAiCompatibleProvider implements LLMProvider {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return errorResult(`OpenAI-compatible endpoint request failed: ${message}`);
+      return errorResult(`"${this.provider}" endpoint request failed: ${message}`);
     }
 
     // Reading the body (`.text()`/`.json()`) can itself throw - a dropped
@@ -256,14 +298,14 @@ export class OpenAiCompatibleProvider implements LLMProvider {
       if (!response.ok) {
         const body = await response.text();
         return errorResult(
-          `OpenAI-compatible endpoint returned ${response.status}: ${body.slice(0, 500)}`,
+          `"${this.provider}" endpoint returned ${response.status}: ${body.slice(0, 500)}`,
         );
       }
 
       const json = (await response.json()) as OpenAiChatCompletionResponse;
       const choice = json.choices[0];
       if (!choice) {
-        return errorResult('OpenAI-compatible endpoint returned no choices.');
+        return errorResult(`"${this.provider}" endpoint returned no choices.`);
       }
 
       const content: ContentBlock[] = [];
@@ -280,7 +322,7 @@ export class OpenAiCompatibleProvider implements LLMProvider {
           // the run; most tool schemas will reject this shape on their
           // own, which is a clearer failure than losing the call entirely.
           console.warn(
-            `[llm/openai-compatible] tool call "${toolCall.function.name}" had unparseable arguments:`,
+            `[llm/${this.provider}] tool call "${toolCall.function.name}" had unparseable arguments:`,
             toolCall.function.arguments,
           );
         }
@@ -298,18 +340,19 @@ export class OpenAiCompatibleProvider implements LLMProvider {
         content,
         stopReason: toStopReason(choice.finish_reason),
         usage,
-        // No generic price table exists for arbitrary third-party
-        // endpoints the way ./pricing.ts has for Anthropic's own models -
-        // reported as $0 rather than guessed at, so budget/cost-dashboard
-        // numbers stay honest (an OpenAI-compatible hire's spend is
-        // currently untracked, not "free"; a future phase could add a
-        // configurable $/MTok rate on `provider_config` per PLAN.md 4.7's
-        // cost tracking).
+        // No generic price table exists for an arbitrary third-party/
+        // self-hosted endpoint the way ./pricing.ts has for Anthropic's
+        // own models - reported as $0 rather than guessed at, so
+        // budget/cost-dashboard numbers stay honest (spend on this
+        // provider is currently untracked, not "free"; a future phase
+        // could add a configurable $/MTok rate on `provider_config` per
+        // PLAN.md 4.7's cost tracking - moot for a genuinely free local
+        // Ollama model, but not for a paid "openai_compatible" endpoint).
         costUsd: 0,
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return errorResult(`Failed to read OpenAI-compatible endpoint response: ${message}`);
+      return errorResult(`Failed to read "${this.provider}" endpoint response: ${message}`);
     }
   }
 }

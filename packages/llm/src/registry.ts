@@ -5,26 +5,32 @@ import { OpenAiCompatibleProvider } from './openaiCompatible.js';
 import type { LLMProvider } from './types.js';
 
 const anthropicProvider = new AnthropicProvider();
-const openAiCompatibleProvider = new OpenAiCompatibleProvider();
+const openAiCompatibleProvider = new OpenAiCompatibleProvider('openai_compatible');
+// PLAN.md 4.1: "The OpenAI-compatible adapter covers OpenAI, and any local
+// server with the same wire format (Ollama, vLLM)." Ollama's own
+// `/v1/chat/completions` shim is that same wire format, so "ollama" gets
+// its own instance of the same OpenAiCompatibleProvider class - not a
+// separate adapter file - configured against its own `provider_config`
+// row and its own localhost default (see ./openaiCompatible.ts's
+// constructor).
+const ollamaProvider = new OpenAiCompatibleProvider('ollama');
 const googleProvider = new GoogleProvider();
 
 /**
  * Resolves a `ModelProvider` (from an agent's `model_config.provider`) to
- * its `LLMProvider` implementation. "anthropic" (Phase 1),
- * "openai_compatible" (Phase 5 - see ./openaiCompatible.ts), and "google"
- * (Phase 5 - see ./google.ts) are implemented; "ollama" is not, so hiring
- * an agent onto that provider today is accepted by the schema but will
- * fail loudly the first time that agent actually runs, rather than
- * silently falling back to a different provider.
+ * its `LLMProvider` implementation. Every value in `@katnor/core`'s
+ * `MODEL_PROVIDERS` is now implemented: "anthropic" (Phase 1),
+ * "openai_compatible" and "google" (Phase 5 - see ./openaiCompatible.ts/
+ * ./google.ts), and "ollama" (also ./openaiCompatible.ts, a second
+ * instance - see the doc comment above).
  */
 export function getProvider(provider: ModelProvider): LLMProvider {
   if (provider === 'anthropic') return anthropicProvider;
   if (provider === 'openai_compatible') return openAiCompatibleProvider;
+  if (provider === 'ollama') return ollamaProvider;
   if (provider === 'google') return googleProvider;
-  throw new Error(
-    `getProvider: no LLMProvider implemented yet for "${provider}" - "anthropic", ` +
-      '"openai_compatible", and "google" are available in this phase.',
-  );
+  const exhaustive: never = provider;
+  throw new Error(`getProvider: unhandled ModelProvider "${exhaustive}"`);
 }
 
 export * from './types.js';
