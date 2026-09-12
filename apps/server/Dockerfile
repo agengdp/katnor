@@ -56,6 +56,13 @@ FROM node:22-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /repo
 
+# git is needed at runtime: the dashboard's wiki editor (apps/server's
+# knowledge router) writes and commits pages directly via
+# @katnor/knowledge's wikiStorage.ts, which shells out to `git` - see
+# apps/worker/Dockerfile's identical comment (both processes share the
+# same `wiki-data` volume in docker-compose.yml).
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 # pnpm hoists workspace packages (e.g. @katnor/core, @katnor/db) into
 # node_modules as symlinks back into packages/*, so - until turbo prune
 # trims this down - the runtime image needs the same repo layout as the

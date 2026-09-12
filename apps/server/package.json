@@ -17,6 +17,7 @@
     "@katnor/artifacts": "workspace:*",
     "@katnor/core": "workspace:*",
     "@katnor/db": "workspace:*",
+    "@katnor/knowledge": "workspace:*",
     "@trpc/server": "^10.45.0",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.6.0",
