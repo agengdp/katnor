@@ -1,7 +1,7 @@
 import type { AskHumanPayload, HireApprovalPayload } from '@katnor/core';
 import { APPROVAL_STATUSES } from '@katnor/core';
 import { createAgentFromPayload, triggerRun } from '@katnor/agents';
-import { approvalRepo, runRepo } from '@katnor/db';
+import { approvalRepo, eventRepo, runRepo } from '@katnor/db';
 import { z } from 'zod';
 import { protectedProcedure, publicProcedure, router } from '../trpc.js';
 
@@ -76,6 +76,10 @@ export const approvalsRouter = router({
         status: input.decision,
         decided_by: 'human',
         payloadPatch,
+      });
+      await eventRepo.append({
+        type: 'approval.decided',
+        payload: { approval_id: existing.id, kind: existing.kind, status: input.decision, decided_by: 'human' },
       });
 
       const originatingRun = await runRepo.getById(existing.run_id);
