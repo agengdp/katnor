@@ -79,6 +79,24 @@
 
   let expandedTaskId = $state<string | null>(null);
 
+  interface TaskArtifactRow {
+    id: string;
+    title: string;
+    kind: string;
+    version: number;
+  }
+  let taskArtifacts = $state<Record<string, TaskArtifactRow[]>>({});
+
+  async function loadTaskArtifacts(taskId: string) {
+    if (taskId in taskArtifacts) return; // cached for the life of this page load
+    try {
+      const rows = await trpc().artifacts.listLatest.query({ taskId });
+      taskArtifacts[taskId] = rows as unknown as TaskArtifactRow[];
+    } catch {
+      // Non-fatal - the task drawer still works without its artifacts list.
+    }
+  }
+
   let newTitle = $state('');
   let newDescription = $state('');
   let newAcceptanceCriteria = $state('');
@@ -228,6 +246,7 @@
 
   function toggleExpand(taskId: string) {
     expandedTaskId = expandedTaskId === taskId ? null : taskId;
+    if (expandedTaskId) loadTaskArtifacts(expandedTaskId);
   }
 
   function assigneeName(assigneeId: string | null): string {
@@ -460,6 +479,22 @@
                             <span class="font-medium text-[var(--color-text)]">Due:</span>
                             {formatDate(task.due_at)}
                           </p>
+                        {/if}
+                        {#if taskArtifacts[task.id]?.length}
+                          <div class="flex flex-col gap-1">
+                            <span class="font-medium text-[var(--color-text)]">Artifacts:</span>
+                            <div class="flex flex-wrap gap-1.5">
+                              {#each taskArtifacts[task.id] as artifact (artifact.id)}
+                                <a
+                                  href={`/artifacts?id=${artifact.id}`}
+                                  onclick={(e) => e.stopPropagation()}
+                                  class="rounded-full border border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-0.5 text-[10px] font-medium text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]"
+                                >
+                                  {artifact.kind} · {artifact.title} (v{artifact.version})
+                                </a>
+                              {/each}
+                            </div>
+                          </div>
                         {/if}
                       </div>
                     {/if}

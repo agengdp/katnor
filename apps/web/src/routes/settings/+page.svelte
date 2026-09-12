@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { MODEL_PROVIDERS, type ModelProvider } from '@katnor/core';
+  import { MODEL_PROVIDERS, type ModelProvider, type ToolConfigKind } from '@katnor/core';
   import { trpc } from '$lib/trpc';
 
   type ProviderRow = {
@@ -117,14 +117,173 @@
       row.saving = false;
     }
   }
+
+  // ─── MCP servers (tool_config) ─────────────────────────────────────────
+
+  interface ToolConfigRow {
+    id: string;
+    kind: ToolConfigKind;
+    name: string;
+    command: string | null;
+    url: string | null;
+    env_secret_refs: string[];
+    enabled: boolean;
+  }
+
+  let toolConfigs = $state<ToolConfigRow[]>([]);
+  let toolConfigsLoading = $state(true);
+  let toolConfigsError = $state<string | null>(null);
+
+  let newServerName = $state('');
+  let newServerCommand = $state('');
+  let newServerUrl = $state('');
+  let newServerSecretRefs = $state('');
+  let creatingServer = $state(false);
+  let createServerError = $state<string | null>(null);
+
+  async function loadToolConfigs() {
+    toolConfigsLoading = true;
+    toolConfigsError = null;
+    try {
+      toolConfigs = (await trpc().toolConfigs.list.query()) as unknown as ToolConfigRow[];
+    } catch (err) {
+      toolConfigsError = describeError(err);
+    } finally {
+      toolConfigsLoading = false;
+    }
+  }
+
+  $effect(() => {
+    loadToolConfigs();
+  });
+
+  function parseSecretRefs(raw: string): string[] {
+    return raw
+      .split(',')
+      .map((s) => s.trim())
+      .filter((s) => s.length > 0);
+  }
+
+  async function createServer(event: SubmitEvent) {
+    event.preventDefault();
+    const name = newServerName.trim();
+    const command = newServerCommand.trim();
+    const url = newServerUrl.trim();
+    if (!name || (!command && !url)) {
+      createServerError = 'A name and either a command (stdio) or a URL (HTTP/SSE) are required.';
+      return;
+    }
+    creatingServer = true;
+    createServerError = null;
+    try {
+      await trpc().toolConfigs.create.mutate({
+        kind: 'mcp',
+        name,
+        command: command || null,
+        url: url || null,
+        envSecretRefs: parseSecretRefs(newServerSecretRefs),
+        enabled: true
+      });
+      newServerName = '';
+      newServerCommand = '';
+      newServerUrl = '';
+      newServerSecretRefs = '';
+      await loadToolConfigs();
+    } catch (err) {
+      createServerError = describeError(err);
+    } finally {
+      creatingServer = false;
+    }
+  }
+
+  async function toggleServerEnabled(row: ToolConfigRow) {
+    try {
+      await trpc().toolConfigs.update.mutate({ id: row.id, enabled: !row.enabled });
+      await loadToolConfigs();
+    } catch (err) {
+      toolConfigsError = describeError(err);
+    }
+  }
+
+  async function removeServer(row: ToolConfigRow) {
+    try {
+      await trpc().toolConfigs.remove.mutate({ id: row.id });
+      await loadToolConfigs();
+    } catch (err) {
+      toolConfigsError = describeError(err);
+    }
+  }
+
+  // ─── Secrets ────────────────────────────────────────────────────────────
+
+  interface SecretRow {
+    name: string;
+    updatedAt: string;
+  }
+
+  let secrets = $state<SecretRow[]>([]);
+  let secretsLoading = $state(true);
+  let secretsError = $state<string | null>(null);
+
+  let newSecretName = $state('');
+  let newSecretValue = $state('');
+  let savingSecret = $state(false);
+  let saveSecretError = $state<string | null>(null);
+
+  async function loadSecrets() {
+    secretsLoading = true;
+    secretsError = null;
+    try {
+      secrets = (await trpc().secrets.list.query()) as unknown as SecretRow[];
+    } catch (err) {
+      secretsError = describeError(err);
+    } finally {
+      secretsLoading = false;
+    }
+  }
+
+  $effect(() => {
+    loadSecrets();
+  });
+
+  async function saveSecret(event: SubmitEvent) {
+    event.preventDefault();
+    const name = newSecretName.trim();
+    const value = newSecretValue.trim();
+    if (!name || !value) {
+      saveSecretError = 'A name (e.g. GITHUB_TOKEN) and a value are required.';
+      return;
+    }
+    savingSecret = true;
+    saveSecretError = null;
+    try {
+      await trpc().secrets.upsert.mutate({ name, value });
+      newSecretName = '';
+      newSecretValue = '';
+      await loadSecrets();
+    } catch (err) {
+      saveSecretError = describeError(err);
+    } finally {
+      savingSecret = false;
+    }
+  }
+
+  async function removeSecret(row: SecretRow) {
+    try {
+      await trpc().secrets.remove.mutate({ name: row.name });
+      await loadSecrets();
+    } catch (err) {
+      secretsError = describeError(err);
+    }
+  }
 </script>
 
 <div class="mx-auto flex max-w-3xl flex-col gap-6">
   <div>
     <h1 class="text-2xl font-semibold">Settings</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
-      Provider API keys, live here. Everything else in Settings (model catalog, MCP tools,
-      sandbox, budgets, approval policies) lands in a later phase.
+      Provider API keys, MCP servers, and secrets live here. Model catalog, sandbox, budgets, and
+      approval policy editing land in a later phase.
     </p>
   </div>
 
@@ -209,5 +368,193 @@
         </div>
       {/each}
     </div>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold">MCP servers</h2>
+      <button
+        type="button"
+        class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+        onclick={loadToolConfigs}
+        disabled={toolConfigsLoading}
+      >
+        {toolConfigsLoading ? 'Loading…' : 'Reload'}
+      </button>
+    </div>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Each server here becomes available to an agent by adding <code>mcp__&lt;name&gt;</code> to
+      their tool allowlist - see <code>@katnor/agents</code>' <code>mcpTools.ts</code>.
+    </p>
+
+    {#if toolConfigsError}
+      <p class="text-sm text-[var(--color-danger)]">{toolConfigsError}</p>
+    {/if}
+
+    <div class="flex flex-col gap-3">
+      {#each toolConfigs as row (row.id)}
+        <div class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
+          <div class="flex flex-wrap items-center justify-between gap-2">
+            <h3 class="font-medium">{row.name}</h3>
+            <span class="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">
+              {row.kind}
+            </span>
+          </div>
+          {#if row.command}
+            <p class="text-xs text-[var(--color-text-muted)]">Command: <code>{row.command}</code></p>
+          {/if}
+          {#if row.url}
+            <p class="text-xs text-[var(--color-text-muted)]">URL: <code>{row.url}</code></p>
+          {/if}
+          {#if row.env_secret_refs.length > 0}
+            <p class="text-xs text-[var(--color-text-muted)]">
+              Env secrets: {row.env_secret_refs.join(', ')}
+            </p>
+          {/if}
+          <div class="flex items-center gap-3">
+            <label class="flex items-center gap-2 text-xs">
+              <input type="checkbox" checked={row.enabled} onchange={() => toggleServerEnabled(row)} class="h-4 w-4" />
+              <span>Enabled</span>
+            </label>
+            <button
+              type="button"
+              class="rounded-md border border-[var(--color-danger)] px-2 py-1 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-surface-muted)]"
+              onclick={() => removeServer(row)}
+            >
+              Remove
+            </button>
+          </div>
+        </div>
+      {:else}
+        <p class="text-sm text-[var(--color-text-muted)]">No MCP servers configured yet.</p>
+      {/each}
+    </div>
+
+    <form class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4" onsubmit={createServer}>
+      <h3 class="text-sm font-semibold">Add a server</h3>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-[var(--color-text-muted)]">Name</span>
+        <input
+          type="text"
+          bind:value={newServerName}
+          placeholder="github"
+          class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+        />
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-[var(--color-text-muted)]">Command (stdio server)</span>
+        <input
+          type="text"
+          bind:value={newServerCommand}
+          placeholder="npx -y @modelcontextprotocol/server-github"
+          class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+        />
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-[var(--color-text-muted)]">URL (HTTP/SSE server, instead of a command)</span>
+        <input
+          type="text"
+          bind:value={newServerUrl}
+          placeholder="https://example.com/mcp"
+          class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+        />
+      </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-[var(--color-text-muted)]">Env secret names (comma-separated, e.g. GITHUB_TOKEN)</span>
+        <input
+          type="text"
+          bind:value={newServerSecretRefs}
+          placeholder="GITHUB_TOKEN"
+          class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+        />
+      </label>
+      {#if createServerError}
+        <p class="text-sm text-[var(--color-danger)]">{createServerError}</p>
+      {/if}
+      <div>
+        <button
+          type="submit"
+          disabled={creatingServer}
+          class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {creatingServer ? 'Adding…' : 'Add server'}
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold">Secrets</h2>
+      <button
+        type="button"
+        class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+        onclick={loadSecrets}
+        disabled={secretsLoading}
+      >
+        {secretsLoading ? 'Loading…' : 'Reload'}
+      </button>
+    </div>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Encrypted at rest, and never sent back to this page once saved - reference a secret's name
+      from an MCP server's env secret names above.
+    </p>
+
+    {#if secretsError}
+      <p class="text-sm text-[var(--color-danger)]">{secretsError}</p>
+    {/if}
+
+    <div class="flex flex-col gap-2">
+      {#each secrets as row (row.name)}
+        <div class="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
+          <span class="font-medium">{row.name}</span>
+          <button
+            type="button"
+            class="rounded-md border border-[var(--color-danger)] px-2 py-1 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-surface-muted)]"
+            onclick={() => removeSecret(row)}
+          >
+            Remove
+          </button>
+        </div>
+      {:else}
+        <p class="text-sm text-[var(--color-text-muted)]">No secrets stored yet.</p>
+      {/each}
+    </div>
+
+    <form class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4" onsubmit={saveSecret}>
+      <h3 class="text-sm font-semibold">Add or replace a secret</h3>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Name</span>
+          <input
+            type="text"
+            bind:value={newSecretName}
+            placeholder="GITHUB_TOKEN"
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Value</span>
+          <input
+            type="password"
+            autocomplete="off"
+            bind:value={newSecretValue}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+      </div>
+      {#if saveSecretError}
+        <p class="text-sm text-[var(--color-danger)]">{saveSecretError}</p>
+      {/if}
+      <div>
+        <button
+          type="submit"
+          disabled={savingSecret}
+          class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {savingSecret ? 'Saving…' : 'Save secret'}
+        </button>
+      </div>
+    </form>
   </section>
 </div>

@@ -21,6 +21,17 @@ export type { AppRouter };
 const serverUrl = env.PUBLIC_SERVER_URL ?? 'http://localhost:3001';
 const trpcUrl = `${serverUrl.replace(/\/+$/, '')}/trpc`;
 
+/**
+ * apps/server's base origin, with no trailing slash - for resolving a
+ * relative URL it hands back outside of tRPC's own response shape, e.g.
+ * artifacts.getUrl's `/artifacts/raw/:key` in local-storage mode (see
+ * apps/web/src/routes/artifacts/+page.svelte). A presigned S3 URL from that
+ * same procedure is already absolute and doesn't need this.
+ */
+export function serverOrigin(): string {
+  return serverUrl.replace(/\/+$/, '');
+}
+
 let browserClient: ReturnType<typeof createTRPCClient<AppRouter>> | undefined;
 
 /**
