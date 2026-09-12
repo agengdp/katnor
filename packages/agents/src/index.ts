@@ -1,9 +1,11 @@
-// @katnor/agents - the agent run loop, prompt builder, company tools, and
-// hiring logic (hire_agent/update_agent/fire_agent/create_team). See PLAN.md
-// sections 4.1 and 4.2.
-//
-// TODO: implemented in a later phase
-
-export const AGENTS_PACKAGE_NAME = '@katnor/agents';
-
-export type AgentTrigger = 'task' | 'mention' | 'schedule' | 'human';
+// @katnor/agents - the run executor, prompt builder, company/org tools,
+// and the messaging + run-triggering logic every wake-up path shares. See
+// PLAN.md sections 4.1 and 4.2, and PLAN.md's repo layout table (2.3) for
+// why hiring logic lives here rather than in @katnor/tools.
+export * from './context.js';
+export * from './queues.js';
+export * from './trigger.js';
+export * from './messaging.js';
+export * from './hiring.js';
+export * from './registry.js';
+export * from './runExecutor.js';

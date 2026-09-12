@@ -5,6 +5,8 @@ import { withBase } from './base.js';
 export const runFields = {
   agent_id: z.string(),
   task_id: z.string().nullable(),
+  /** The channel whose message woke this run, if any - see the schema column's doc comment in @katnor/db. */
+  channel_id: z.string().nullable(),
   trigger: z.enum(RUN_TRIGGERS),
   status: z.enum(RUN_STATUSES),
   started_at: z.date(),
@@ -26,6 +28,7 @@ export type Run = z.infer<typeof runSchema>;
 export const createRunInputSchema = z.object({
   agent_id: runFields.agent_id,
   task_id: runFields.task_id.optional(),
+  channel_id: runFields.channel_id.optional(),
   trigger: runFields.trigger,
 });
 export type CreateRunInput = z.infer<typeof createRunInputSchema>;

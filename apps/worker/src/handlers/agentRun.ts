@@ -1,22 +1,22 @@
+import { runAgentExecutor } from '@katnor/agents';
 import type PgBoss from 'pg-boss';
 
-// TODO(Phase 1, PLAN.md §4.1): implement the real agent run executor here -
-// build the cache-friendly prompt (company prompt, persona, tool defs, then
-// working context and the trigger), call the agent's LLM provider adapter
-// with its allowlisted tools, execute tool calls and feed results back,
-// repeat until the model ends the turn or a step/token/budget limit trips,
-// and record every LLM call and tool call as a `run_step` (tokens, cost,
-// duration). This stub only proves the pg-boss `agent-run` queue wiring
-// end-to-end until that lands.
-
 /**
- * Will run one agent's turn through the LLM tool-use loop for a queued
- * `agent-run` job (trigger: task assignment, mention, colleague question,
- * scheduled check-in, or human message) - see PLAN.md §4.1.
+ * Runs one agent's turn through the LLM tool-use loop for each queued
+ * `agent-run` job - see @katnor/agents' `runAgentExecutor` for the actual
+ * loop (PLAN.md §4.1). `boss` is threaded through so the executor's tools
+ * (e.g. `delegate_task`, `send_message`) can enqueue further runs they
+ * trigger, using the same client this worker process already has running.
  */
-export async function agentRun(jobs: PgBoss.Job<unknown>[]): Promise<{ ok: true }> {
-  for (const job of jobs) {
-    console.log(`[worker] agent-run fired (job ${job.id})`);
-  }
-  return { ok: true };
+export function createAgentRunHandler(boss: PgBoss) {
+  return async function agentRun(jobs: PgBoss.Job<{ runId: string; note?: string }>[]): Promise<{ ok: true }> {
+    for (const job of jobs) {
+      try {
+        await runAgentExecutor(boss, job.data.runId, job.data.note);
+      } catch (err) {
+        console.error(`[worker] agent-run job ${job.id} (run ${job.data.runId}) threw:`, err);
+      }
+    }
+    return { ok: true };
+  };
 }

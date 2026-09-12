@@ -1,3 +1,4 @@
+import { eq } from 'drizzle-orm';
 import { db } from '../client.js';
 import { project } from '../schema/index.js';
 import { ulid } from '../ulid.js';
@@ -21,4 +22,9 @@ export async function create(input: CreateProjectInput): Promise<ProjectRow> {
 
 export async function list(): Promise<ProjectRow[]> {
   return db.select().from(project);
+}
+
+export async function getById(id: string): Promise<ProjectRow | undefined> {
+  const [row] = await db.select().from(project).where(eq(project.id, id)).limit(1);
+  return row;
 }

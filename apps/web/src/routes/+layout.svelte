@@ -1,8 +1,33 @@
 <script lang="ts">
   import '../app.css';
   import { page } from '$app/stores';
+  import { goto } from '$app/navigation';
+  import { trpc } from '$lib/trpc';
 
   let { children } = $props();
+
+  let authenticated = $state<boolean | null>(null); // null = not checked yet
+
+  async function refreshAuth() {
+    try {
+      const result = await trpc().auth.me.query();
+      authenticated = result.authenticated;
+    } catch {
+      // apps/server may not be reachable yet - reads elsewhere already
+      // surface their own errors, so this just leaves the auth chip quiet.
+      authenticated = null;
+    }
+  }
+
+  $effect(() => {
+    refreshAuth();
+  });
+
+  async function logout() {
+    await trpc().auth.logout.mutate();
+    authenticated = false;
+    await goto('/');
+  }
 
   const navLinks = [
     { href: '/office', label: 'Office', icon: '🏢' },
@@ -41,6 +66,23 @@
       <span aria-hidden="true" class="text-[var(--color-success)]">●</span>
       <span>$0.00 today</span>
     </div>
+
+    {#if authenticated}
+      <button
+        type="button"
+        onclick={logout}
+        class="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+      >
+        Log out
+      </button>
+    {:else}
+      <a
+        href="/login"
+        class="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+      >
+        Log in
+      </a>
+    {/if}
   </header>
 
   <div class="flex min-h-0 flex-1 flex-col sm:flex-row">

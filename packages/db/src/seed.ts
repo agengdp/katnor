@@ -6,8 +6,10 @@
  *   pnpm db:generate && pnpm db:migrate && pnpm db:post-migrate && pnpm db:seed
  */
 import type { AgentPersona, ModelConfig } from '@katnor/core';
+import { DEFAULT_COMPANY_SETTINGS } from '@katnor/core';
 import { client, db } from './client.js';
 import * as agentRepo from './repositories/agent.js';
+import * as channelRepo from './repositories/channel.js';
 import * as companyRepo from './repositories/company.js';
 import { company } from './schema/index.js';
 
@@ -28,6 +30,11 @@ const CEO_PERSONA: AgentPersona = {
   style: 'direct',
 };
 
+// The full company tool set (@katnor/agents' DEFAULT_COMPANY_TOOL_NAMES)
+// plus every CEO-only org tool. Kept as a literal list rather than an
+// import from @katnor/agents - that package already depends on
+// @katnor/db, so importing it back here would be a circular package
+// dependency. Keep in sync with companyTools.ts's tool names by hand.
 const CEO_TOOL_ALLOWLIST = [
   'hire_agent',
   'update_agent',
@@ -35,8 +42,11 @@ const CEO_TOOL_ALLOWLIST = [
   'create_team',
   'send_message',
   'read_channel',
-  'delegate_task',
+  'ask_colleague',
+  'ask_human',
   'create_project',
+  'delegate_task',
+  'update_task',
 ];
 
 const CEO_SYSTEM_PROMPT = [
@@ -57,7 +67,10 @@ async function main() {
   // companyRepo.getOrCreate() itself does the same select internally and
   // is the source of truth for whether a row is actually inserted.
   const [companyExistedBefore] = await db.select().from(company).limit(1);
-  const companyRow = await companyRepo.getOrCreate({ name: companyName, settings: {} });
+  const companyRow = await companyRepo.getOrCreate({
+    name: companyName,
+    settings: DEFAULT_COMPANY_SETTINGS,
+  });
   console.log(
     companyExistedBefore
       ? `[seed] company already exists: "${companyRow.name}" (${companyRow.id})`
@@ -90,6 +103,9 @@ async function main() {
     });
     console.log(`[seed] created system agent: "${ceo.name}" (${ceo.id})`);
   }
+
+  const generalChannel = await channelRepo.getOrCreateGeneral();
+  console.log(`[seed] #general channel ready: (${generalChannel.id})`);
 
   await client.end();
   process.exit(0);

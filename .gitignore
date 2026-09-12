@@ -18,5 +18,8 @@ build
 # Test coverage
 coverage
 
+# Claude Code harness state (e.g. isolated worktrees for background agents) - never project source
+.claude
+
 # NOTE: drizzle/*.sql migration files are intentionally NOT ignored here -
 # migrations must be committed to the repo.

@@ -34,6 +34,18 @@ const agentFiredEvent = z.object({
   agent_id: z.string(),
 });
 
+const projectCreatedEvent = z.object({
+  type: z.literal('project.created'),
+  project_id: z.string(),
+  name: z.string(),
+});
+
+const teamCreatedEvent = z.object({
+  type: z.literal('team.created'),
+  team_id: z.string(),
+  name: z.string(),
+});
+
 const taskCreatedEvent = z.object({
   type: z.literal('task.created'),
   task_id: z.string(),
@@ -124,6 +136,8 @@ export const eventPayloadSchema = z.discriminatedUnion('type', [
   agentHiredEvent,
   agentUpdatedEvent,
   agentFiredEvent,
+  projectCreatedEvent,
+  teamCreatedEvent,
   taskCreatedEvent,
   taskUpdatedEvent,
   messagePostedEvent,
@@ -143,6 +157,8 @@ export const EVENT_TYPES = [
   'agent.hired',
   'agent.updated',
   'agent.fired',
+  'project.created',
+  'team.created',
   'task.created',
   'task.updated',
   'message.posted',

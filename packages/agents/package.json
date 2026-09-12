@@ -7,5 +7,15 @@
   "types": "./src/index.ts",
   "scripts": {
     "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@katnor/core": "workspace:*",
+    "@katnor/db": "workspace:*",
+    "@katnor/llm": "workspace:*",
+    "@katnor/tools": "workspace:*",
+    "pg-boss": "^10.1.0"
+  },
+  "devDependencies": {
+    "typescript": "^5.7.0"
   }
 }

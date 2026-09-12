@@ -14,7 +14,18 @@ export type TaskPriority = (typeof TASK_PRIORITIES)[number];
 export const RUN_TRIGGERS = ['task', 'mention', 'schedule', 'human'] as const;
 export type RunTrigger = (typeof RUN_TRIGGERS)[number];
 
-export const RUN_STATUSES = ['queued', 'running', 'succeeded', 'failed', 'cancelled'] as const;
+// 'waiting_human' is a run that called `ask_human` and is parked until the
+// owner answers via the Inbox - see @katnor/agents' ask_human tool and
+// apps/server's approvals router. It is distinct from 'running' (actively
+// generating) and not a failure.
+export const RUN_STATUSES = [
+  'queued',
+  'running',
+  'waiting_human',
+  'succeeded',
+  'failed',
+  'cancelled',
+] as const;
 export type RunStatus = (typeof RUN_STATUSES)[number];
 
 export const RUN_STEP_KINDS = [
@@ -44,7 +55,11 @@ export const ARTIFACT_KINDS = [
 ] as const;
 export type ArtifactKind = (typeof ARTIFACT_KINDS)[number];
 
-export const APPROVAL_KINDS = ['hire', 'tool_call', 'spend'] as const;
+// 'question' is Phase 1's `ask_human` tool: the Inbox page (PLAN.md 4.9)
+// deliberately shows pending approvals and pending questions together, so
+// both are modeled as `approval` rows rather than as two separate tables -
+// see @katnor/core's askHumanPayloadSchema in schemas/approval.ts.
+export const APPROVAL_KINDS = ['hire', 'tool_call', 'spend', 'question'] as const;
 export type ApprovalKind = (typeof APPROVAL_KINDS)[number];
 
 export const APPROVAL_STATUSES = ['pending', 'approved', 'rejected'] as const;

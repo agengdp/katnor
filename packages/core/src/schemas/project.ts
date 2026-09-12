@@ -21,6 +21,22 @@ export const boardSettingsSchema = z.object({
 });
 export type BoardSettings = z.infer<typeof boardSettingsSchema>;
 
+/**
+ * The default kanban columns a new project's board starts with (PLAN.md
+ * 4.7): Backlog/Todo/In progress/Review/Done, with "blocked" shown as a
+ * badge on a card rather than its own column. Shared by @katnor/agents'
+ * `create_project` tool and apps/server's `projects.create` mutation, so a
+ * project created by the CEO and one created by a human from the
+ * dashboard start identical.
+ */
+export const DEFAULT_BOARD_COLUMNS: BoardSettings['columns'] = [
+  { id: 'backlog', name: 'Backlog', status: 'backlog' },
+  { id: 'todo', name: 'Todo', status: 'todo' },
+  { id: 'in_progress', name: 'In progress', status: 'in_progress' },
+  { id: 'review', name: 'Review', status: 'review' },
+  { id: 'done', name: 'Done', status: 'done' },
+];
+
 export const projectFields = {
   name: z.string().min(1),
   description: z.string(),

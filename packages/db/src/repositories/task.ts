@@ -29,6 +29,11 @@ export async function list(filter: ListTasksFilter = {}): Promise<TaskRow[]> {
   return db.select().from(task);
 }
 
+export async function getById(id: string): Promise<TaskRow | undefined> {
+  const [row] = await db.select().from(task).where(eq(task.id, id)).limit(1);
+  return row;
+}
+
 /** Always bumps `updated_at`, in addition to whatever fields are in `patch`. */
 export async function update(id: string, patch: UpdateTaskInput): Promise<TaskRow | undefined> {
   const [updated] = await db

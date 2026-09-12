@@ -1,17 +1,14 @@
 import { createTRPCClient, type TRPCClientInit } from 'trpc-sveltekit';
+// A type-only import: @katnor/server is a devDependency of this package
+// (package.json) purely so this line resolves - "import type" is erased at
+// build time, so no server code is ever bundled or run here. Phase 0 stood
+// this in as `AppRouter = any` until apps/server's router existed; it's
+// built out now, so every procedure call below (`trpc().settings...`,
+// `.agents...`, `.tasks...`, etc.) is fully typed end-to-end.
+import type { AppRouter } from '@katnor/server';
 import { env } from '$env/dynamic/public';
 
-// TODO: replace this with a real import once @katnor/server exports its
-// router type, e.g. `import type { AppRouter } from '@katnor/server';`.
-// apps/server is being built in parallel in this same phase, so its exact
-// tRPC router shape (procedure names/inputs/outputs) isn't available to
-// import from here yet. Do NOT add a package dependency from @katnor/web on
-// @katnor/server to get it early - a shared router-type export across the
-// package boundary is a later-phase concern. Until then, calls below (e.g.
-// `trpc().settings.listProviders.query()`) are untyped and rely on matching
-// the shape documented in PLAN.md by convention.
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
-export type AppRouter = any;
+export type { AppRouter };
 
 // apps/server is a separate deployable (see docker-compose.yml), reachable
 // at PUBLIC_SERVER_URL - not a tRPC handler mounted inside this SvelteKit

@@ -1,5 +1,7 @@
 import type { FetchCreateContextFnOptions } from '@trpc/server/adapters/fetch';
 import { db, type Database } from '@katnor/db';
+import type PgBoss from 'pg-boss';
+import { boss } from '../boss.js';
 import { readCookie, SESSION_COOKIE_NAME, verifySessionToken } from '../auth.js';
 
 export interface Session {
@@ -9,6 +11,8 @@ export interface Session {
 export interface Context {
   /** The shared @katnor/db drizzle client - every procedure's DB access goes through this. */
   db: Database;
+  /** The shared pg-boss client - procedures that trigger a run (messages.send, tasks.update, approvals.decide) send through this. */
+  boss: PgBoss;
   session: Session;
   /**
    * The outgoing response's mutable header bag, supplied by tRPC's fetch
@@ -33,5 +37,5 @@ export interface Context {
 export function createContext({ req, resHeaders }: FetchCreateContextFnOptions): Context {
   const token = readCookie(req.headers.get('cookie'), SESSION_COOKIE_NAME);
   const authenticated = verifySessionToken(token);
-  return { db, session: { authenticated }, resHeaders };
+  return { db, boss, session: { authenticated }, resHeaders };
 }

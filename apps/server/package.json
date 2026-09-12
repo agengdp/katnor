@@ -13,11 +13,13 @@
   },
   "dependencies": {
     "@hono/node-server": "^1.13.0",
+    "@katnor/agents": "workspace:*",
     "@katnor/core": "workspace:*",
     "@katnor/db": "workspace:*",
     "@trpc/server": "^10.45.0",
     "drizzle-orm": "^0.38.0",
     "hono": "^4.6.0",
+    "pg-boss": "^10.1.0",
     "ws": "^8.18.0",
     "zod": "^3.24.0"
   },

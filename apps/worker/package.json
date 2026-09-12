@@ -10,8 +10,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@katnor/core": "workspace:*",
-    "@katnor/db": "workspace:*",
+    "@katnor/agents": "workspace:*",
     "pg-boss": "^10.1.0",
     "zod": "^3.24.0"
   },

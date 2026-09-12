@@ -1,5 +1,6 @@
 import { relations } from 'drizzle-orm';
 import { agent } from './agent.js';
+import { approval } from './approval.js';
 import { artifact } from './artifact.js';
 import { channel } from './channel.js';
 import { kgEdge } from './kgEdge.js';
@@ -29,11 +30,11 @@ import { team } from './team.js';
  * initialized.
  *
  * Only the tables called out as "FK-heavy" get relations defined here:
- * agent, task, run, run_step, message, artifact, kg_edge. Other tables
- * (team, project, channel, kg_node, ...) can still be the *target* of a
- * relation (e.g. `task.project`) without needing their own `relations()`
- * entry - that's only required for querying with `with: {...}` starting
- * from that other side.
+ * agent, task, run, run_step, message, artifact, kg_edge, channel,
+ * approval. Other tables (team, project, kg_node, ...) can still be the
+ * *target* of a relation (e.g. `task.project`) without needing their own
+ * `relations()` entry - that's only required for querying with
+ * `with: {...}` starting from that other side.
  */
 
 export const agentRelations = relations(agent, ({ one, many }) => ({
@@ -64,8 +65,21 @@ export const taskRelations = relations(task, ({ one, many }) => ({
 export const runRelations = relations(run, ({ one, many }) => ({
   agent: one(agent, { fields: [run.agent_id], references: [agent.id] }),
   task: one(task, { fields: [run.task_id], references: [task.id] }),
+  channel: one(channel, { fields: [run.channel_id], references: [channel.id] }),
   steps: many(runStep),
   artifacts: many(artifact),
+  approvals: many(approval),
+}));
+
+export const approvalRelations = relations(approval, ({ one }) => ({
+  run: one(run, { fields: [approval.run_id], references: [run.id] }),
+}));
+
+export const channelRelations = relations(channel, ({ one, many }) => ({
+  project: one(project, { fields: [channel.project_id], references: [project.id] }),
+  team: one(team, { fields: [channel.team_id], references: [team.id] }),
+  task: one(task, { fields: [channel.task_id], references: [task.id] }),
+  messages: many(message),
 }));
 
 export const runStepRelations = relations(runStep, ({ one }) => ({

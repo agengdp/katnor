@@ -1,6 +1,14 @@
+import { agentsRouter } from './routers/agents.js';
+import { approvalsRouter } from './routers/approvals.js';
 import { authRouter } from './routers/auth.js';
+import { channelsRouter } from './routers/channels.js';
 import { healthRouter } from './routers/health.js';
+import { messagesRouter } from './routers/messages.js';
+import { projectsRouter } from './routers/projects.js';
+import { runsRouter } from './routers/runs.js';
 import { settingsRouter } from './routers/settings.js';
+import { tasksRouter } from './routers/tasks.js';
+import { teamsRouter } from './routers/teams.js';
 import { router } from './trpc.js';
 
 // No `superjson` (or other) transformer is configured: it isn't in this
@@ -12,14 +20,21 @@ export const appRouter = router({
   health: healthRouter,
   auth: authRouter,
   settings: settingsRouter,
+  agents: agentsRouter,
+  teams: teamsRouter,
+  projects: projectsRouter,
+  tasks: tasksRouter,
+  channels: channelsRouter,
+  messages: messagesRouter,
+  runs: runsRouter,
+  approvals: approvalsRouter,
 });
 
 /**
  * The router's type, with no runtime import of this file's dependencies -
  * this is what apps/web imports (`import type { AppRouter } from
- * '@katnor/server'`) to get a fully-typed tRPC client without pulling in
- * the server's actual code. See apps/web/src/lib/trpc.ts for where that
- * import currently stands in as `AppRouter = any` until this package is
- * wired up as a dependency there.
+ * '@katnor/server'`, a devDependency there since only the type is ever
+ * used - see apps/web/src/lib/trpc.ts) to get a fully-typed tRPC client
+ * without pulling in the server's actual code.
  */
 export type AppRouter = typeof appRouter;

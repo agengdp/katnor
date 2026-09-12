@@ -54,12 +54,14 @@ could not be installed. As a result:
   insert into `event`.
 - `src/listen.ts` - `subscribeToEvents()`, a `LISTEN katnor_events` subscriber for the server's event
   fan-out. Uses the `pg` driver rather than `postgres` - see the comment in that file for why.
-- `src/repositories/` - thin CRUD wrappers around drizzle calls (no business logic) for `company`,
-  `agent`, `project`, `task`, and `event`. Enough for `src/seed.ts` and Phase 1; more will be added
-  by the packages that actually need them (`@katnor/agents`, `@katnor/knowledge`, etc.) as they're
-  built.
-- `src/seed.ts` - idempotently creates the single `company` row and the system CEO agent
-  ("Nadia Reyes").
+- `src/repositories/` - thin CRUD wrappers around drizzle calls (no business logic) for `company`
+  (including `getSettings`/`updateSettings`, which merge over `@katnor/core`'s
+  `DEFAULT_COMPANY_SETTINGS` for any key a stored row doesn't have), `agent`, `project`, `task`,
+  `event`, `run`, `runStep`, `channel` (including `getOrCreateGeneral`/`getOrCreateDm`/
+  `getOrCreateTaskThread`), `message`, `team`, and `approval`. `@katnor/knowledge`'s own
+  repositories (`kg_node`/`kg_edge`/`wiki_page`) are still a later phase.
+- `src/seed.ts` - idempotently creates the single `company` row (with default settings), the system
+  CEO agent ("Nadia Reyes"), and the `#general` channel.
 
 ## Notes on two design choices called out for review
 
