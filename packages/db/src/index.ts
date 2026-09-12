@@ -26,3 +26,4 @@ export * as secretRepo from './repositories/secret.js';
 export * as kgNodeRepo from './repositories/kgNode.js';
 export * as kgEdgeRepo from './repositories/kgEdge.js';
 export * as wikiPageRepo from './repositories/wikiPage.js';
+export * as providerConfigRepo from './repositories/providerConfig.js';

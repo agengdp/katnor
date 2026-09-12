@@ -10,7 +10,8 @@
   },
   "dependencies": {
     "@anthropic-ai/sdk": "^0.68.0",
-    "@katnor/core": "workspace:*"
+    "@katnor/core": "workspace:*",
+    "@katnor/db": "workspace:*"
   },
   "devDependencies": {
     "typescript": "^5.7.0"
