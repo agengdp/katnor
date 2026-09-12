@@ -27,10 +27,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 # to be baked into this image for auth.
 RUN npm install -g @anthropic-ai/claude-code
 
-# Codex isn't one of Phase 2's implemented work tools (PLAN.md 4.3 scoped
-# this phase to shell/claude_code/GitHub MCP/web_search/web_fetch) - left
-# here as a TODO for whichever later phase adds it:
-# RUN npm install -g @openai/codex
+# The `codex` work tool (@katnor/agents' src/workTools.ts, Phase 5) runs
+# this CLI the same way - non-interactively via `docker exec`.
+# OPENAI_API_KEY is forwarded per-exec by that work tool, same as
+# ANTHROPIC_API_KEY above, so nothing needs to be baked in here for auth.
+RUN npm install -g @openai/codex
 
 WORKDIR /workspace
 

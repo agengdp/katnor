@@ -79,13 +79,14 @@ async function gateDangerousShellCommand(
 
 const SHELL_TIMEOUT_MS = 5 * 60 * 1000;
 const CLAUDE_CODE_TIMEOUT_MS = 20 * 60 * 1000;
+const CODEX_TIMEOUT_MS = 20 * 60 * 1000;
 
 /**
- * Work tools (PLAN.md 4.3): `shell` and `claude_code` run inside the
- * project's workspace (a Docker container per project, or a plain local
- * directory in dev "host mode" - see @katnor/tools/src/workspace). Unlike
- * ./companyTools.ts/./orgTools.ts these need `ctx.project` (loaded by
- * ./runExecutor.ts from the run's task) and `ctx.company` (for the
+ * Work tools (PLAN.md 4.3): `shell`, `claude_code`, and `codex` run inside
+ * the project's workspace (a Docker container per project, or a plain
+ * local directory in dev "host mode" - see @katnor/tools/src/workspace).
+ * Unlike ./companyTools.ts/./orgTools.ts these need `ctx.project` (loaded
+ * by ./runExecutor.ts from the run's task) and `ctx.company` (for the
  * approval-gate check above) - a run with no task/project can't use them.
  */
 export const workTools: ToolDefinition<AgentToolContext>[] = [
@@ -196,6 +197,66 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
         // @katnor/tools/src/workspace/host.ts - so this is a harmless
         // no-op override there).
         env: { ANTHROPIC_API_KEY: process.env.ANTHROPIC_API_KEY ?? '' },
+      });
+      return { content: formatExecResult(result), isError: result.exitCode !== 0 };
+    },
+  },
+
+  {
+    name: 'codex',
+    description:
+      "Delegate a coding task to OpenAI's Codex, an autonomous coding agent, against one of this project's repos. It reads/edits files and runs commands on its own inside the workspace, then reports back what it did. An alternative to `claude_code` for teams that prefer/have configured Codex.",
+    inputSchema: {
+      type: 'object',
+      properties: {
+        repo: { type: 'string', description: '"owner/repo" - one of the project\'s configured repos.' },
+        prompt: { type: 'string', description: 'What to do, in as much detail as a human engineer would need.' },
+      },
+      required: ['repo', 'prompt'],
+      additionalProperties: false,
+    },
+    async execute(input, ctx) {
+      const repoName = str(input, 'repo');
+      const prompt = str(input, 'prompt');
+      if (!repoName || !prompt) {
+        return { content: 'codex requires repo and prompt.', isError: true };
+      }
+      if (!ctx.project) {
+        return { content: 'codex requires a project - this run has no task/project to work in.', isError: true };
+      }
+
+      const manager = getWorkspaceManager();
+      const workspaceProject = toWorkspaceProject(ctx.project);
+      await manager.ensureWorkspace(workspaceProject);
+
+      const repo = workspaceProject.repos.find((candidate) => `${candidate.owner}/${candidate.repo}` === repoName);
+      if (!repo) {
+        return { content: `No repo "${repoName}" configured on this project.`, isError: true };
+      }
+
+      // Mirrors ./workTools.ts's `claude_code` tool above: runs the `codex`
+      // CLI (`@openai/codex`, installed in sandbox/Dockerfile) non-
+      // interactively via the same `exec()` every work tool uses, rather
+      // than embedding a Codex SDK directly. `exec --full-auto` is Codex
+      // CLI's documented non-interactive "automation mode" (auto-approves
+      // its own file edits/commands inside this already-sandboxed
+      // workspace) as of this writing; this sandbox has no network access
+      // to verify the exact flag spelling against a live install (same
+      // caveat as `claude_code`'s NOTE above).
+      //
+      // Same prompt-escaping caveat as `claude_code`: `prompt` is
+      // JSON-stringified for bash double-quoting, which doesn't preserve a
+      // literal embedded newline as a real newline.
+      const command = `codex exec --full-auto ${JSON.stringify(prompt)}`;
+      const result = await manager.exec(workspaceProject, command, {
+        cwd: manager.repoPath(repo),
+        timeoutMs: CODEX_TIMEOUT_MS,
+        // Same rationale as `claude_code`'s `ANTHROPIC_API_KEY` forwarding
+        // above: the Docker-mode project container has no other route to
+        // apps/worker's own env, so Codex's key is forwarded per-exec
+        // (a harmless no-op override in host mode, which already inherits
+        // the whole process env).
+        env: { OPENAI_API_KEY: process.env.OPENAI_API_KEY ?? '' },
       });
       return { content: formatExecResult(result), isError: result.exitCode !== 0 };
     },
