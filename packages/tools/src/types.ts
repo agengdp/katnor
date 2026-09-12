@@ -27,6 +27,18 @@ export interface ToolDefinition<TContext = unknown> {
   inputSchema: Record<string, unknown>;
   /** Restricts this tool to the one system agent (the CEO) - see PLAN.md 4.1's hiring tools. */
   ceoOnly?: boolean;
+  /**
+   * Set only for Anthropic's server-side `web_search`/`web_fetch` (PLAN.md
+   * 4.3) - see @katnor/llm's `ProviderTool.serverType` doc comment for what
+   * this tag means and why it's provider-resolved rather than a raw type
+   * string. A tool with this set is declared to the model by tag alone
+   * (`description`/`inputSchema` are ignored downstream, in
+   * @katnor/llm/src/anthropic.ts's `toAnthropicTools`) and its `execute` is
+   * never actually invoked - Anthropic runs it server-side within the same
+   * turn, so the run executor never sees a `tool_use` block naming it (see
+   * @katnor/llm's `ServerToolBlock`).
+   */
+  serverType?: 'web_search' | 'web_fetch';
   execute(input: Record<string, unknown>, ctx: TContext): Promise<ToolExecutionResult>;
 }
 
@@ -34,6 +46,7 @@ export interface ProviderToolShape {
   name: string;
   description: string;
   inputSchema: Record<string, unknown>;
+  serverType?: 'web_search' | 'web_fetch';
 }
 
 export interface ToolRegistry<TContext> {

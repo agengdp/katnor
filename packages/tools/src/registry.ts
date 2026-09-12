@@ -21,7 +21,12 @@ export function createToolRegistry<TContext>(): ToolRegistry<TContext> {
         const def = tools.get(name);
         if (!def) continue; // stale allowlist entry - not this registry's concern to flag
         if (def.ceoOnly && !opts.isSystem) continue;
-        result.push({ name: def.name, description: def.description, inputSchema: def.inputSchema });
+        result.push({
+          name: def.name,
+          description: def.description,
+          inputSchema: def.inputSchema,
+          serverType: def.serverType,
+        });
       }
       return result;
     },
