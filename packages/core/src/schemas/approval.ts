@@ -69,3 +69,20 @@ export const hireApprovalPayloadSchema = z.object({
   team_id: z.string().nullable(),
 });
 export type HireApprovalPayload = z.infer<typeof hireApprovalPayloadSchema>;
+
+/**
+ * The shape `approval.payload` takes for `kind: "tool_call"` - a dangerous
+ * work-tool action (currently just the `shell` tool's `git push` detection
+ * - see @katnor/agents/src/workTools.ts) gated by
+ * `company.settings.approval_policy.tool_call` (PLAN.md 4.2's "approval
+ * gates for pushes"). `project_id` is null when the run isn't scoped to a
+ * project; `"ask_once_per_project"` policy is implemented by checking for a
+ * prior *approved* `tool_call` approval with the same `tool_name` and
+ * `project_id` before asking again.
+ */
+export const toolCallApprovalPayloadSchema = z.object({
+  tool_name: z.string().min(1),
+  project_id: z.string().nullable(),
+  summary: z.string(),
+});
+export type ToolCallApprovalPayload = z.infer<typeof toolCallApprovalPayloadSchema>;

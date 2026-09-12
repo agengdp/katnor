@@ -132,6 +132,13 @@ const wikiPageUpdatedEvent = z.object({
   path: z.string(),
 });
 
+const chatterLimitedEvent = z.object({
+  type: z.literal('chatter.limited'),
+  channel_id: z.string(),
+  author_id: z.string(),
+  reason: z.enum(['rate_limit', 'thread_escalation']),
+});
+
 export const eventPayloadSchema = z.discriminatedUnion('type', [
   agentHiredEvent,
   agentUpdatedEvent,
@@ -149,6 +156,7 @@ export const eventPayloadSchema = z.discriminatedUnion('type', [
   approvalDecidedEvent,
   kgNodeUpsertedEvent,
   wikiPageUpdatedEvent,
+  chatterLimitedEvent,
 ]);
 
 export type EventPayload = z.infer<typeof eventPayloadSchema>;
@@ -170,6 +178,7 @@ export const EVENT_TYPES = [
   'approval.decided',
   'kg_node.upserted',
   'wiki_page.updated',
+  'chatter.limited',
 ] as const;
 export type EventType = (typeof EVENT_TYPES)[number];
 

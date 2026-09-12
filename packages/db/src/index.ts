@@ -4,6 +4,7 @@ export * from './env.js';
 export * from './client.js';
 export * from './ulid.js';
 export * from './listen.js';
+export * from './crypto.js';
 export * from './schema/index.js';
 
 // Repositories are exported as namespaces (not `export *`) since several
@@ -19,3 +20,6 @@ export * as channelRepo from './repositories/channel.js';
 export * as messageRepo from './repositories/message.js';
 export * as teamRepo from './repositories/team.js';
 export * as approvalRepo from './repositories/approval.js';
+export * as artifactRepo from './repositories/artifact.js';
+export * as toolConfigRepo from './repositories/toolConfig.js';
+export * as secretRepo from './repositories/secret.js';

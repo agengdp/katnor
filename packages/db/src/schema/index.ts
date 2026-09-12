@@ -23,6 +23,7 @@ export * from './wikiPage.js';
 export * from './toolConfig.js';
 export * from './providerConfig.js';
 export * from './approval.js';
+export * from './secret.js';
 export * from './event.js';
 
 export * from './relations.js';
