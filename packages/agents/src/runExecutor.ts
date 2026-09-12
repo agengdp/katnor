@@ -1,9 +1,10 @@
 import type { ContentBlock, ProviderMessage } from '@katnor/llm';
 import { getProvider } from '@katnor/llm';
 import type { RunStatus } from '@katnor/core';
-import { agentRepo, companyRepo, eventRepo, messageRepo, runRepo, runStepRepo, taskRepo } from '@katnor/db';
+import { agentRepo, companyRepo, eventRepo, messageRepo, projectRepo, runRepo, runStepRepo, taskRepo } from '@katnor/db';
 import type PgBoss from 'pg-boss';
 import type { AgentToolContext } from './context.js';
+import { loadAgentMcpTools } from './mcpTools.js';
 import { buildInitialUserMessage, buildSystemPrompt } from './promptBuilder.js';
 import { agentToolRegistry, DEFAULT_COMPANY_TOOL_NAMES } from './registry.js';
 
@@ -22,6 +23,9 @@ function isThinkingBlock(block: ContentBlock): block is Extract<ContentBlock, { 
 }
 function isToolUseBlock(block: ContentBlock): block is Extract<ContentBlock, { type: 'tool_use' }> {
   return block.type === 'tool_use';
+}
+function isServerToolBlock(block: ContentBlock): block is Extract<ContentBlock, { type: 'server_tool' }> {
+  return block.type === 'server_tool';
 }
 
 /**
@@ -73,6 +77,7 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     companyRepo.get(),
     run.channel_id ? messageRepo.list(run.channel_id) : Promise.resolve([]),
   ]);
+  const project = task?.project_id ? ((await projectRepo.getById(task.project_id)) ?? null) : null;
 
   const promptInput = {
     companyName: company.name,
@@ -87,11 +92,20 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
   const initialUserText = buildInitialUserMessage(promptInput);
 
   const toolNames = agent.tool_allowlist.length > 0 ? agent.tool_allowlist : DEFAULT_COMPANY_TOOL_NAMES;
-  const tools = agentToolRegistry.listForModel(toolNames, { isSystem: agent.is_system });
+  // MCP tools (PLAN.md 4.3) are discovered live per run from whatever
+  // servers this agent's tool_allowlist grants (see ./mcpTools.ts) rather
+  // than pre-registered in the shared, module-level `agentToolRegistry` -
+  // so they're merged in here instead of being one of `toolNames`.
+  const mcpTools = await loadAgentMcpTools(agent.tool_allowlist);
+  const mcpToolsByName = new Map(mcpTools.map((def) => [def.name, def]));
+  const tools = [
+    ...agentToolRegistry.listForModel(toolNames, { isSystem: agent.is_system }),
+    ...mcpTools.map((def) => ({ name: def.name, description: def.description, inputSchema: def.inputSchema })),
+  ];
   const provider = getProvider(agent.model_config.provider);
 
   const messages: ProviderMessage[] = [{ role: 'user', content: [{ type: 'text', text: initialUserText }] }];
-  const toolCtx: AgentToolContext = { boss, agent, run, task: task ?? null, pauseRequested: null };
+  const toolCtx: AgentToolContext = { boss, agent, run, task: task ?? null, project, company, pauseRequested: null };
 
   // PLAN.md 4.1: "a task budget is also sent so the model paces itself."
   // This is a whole-run advisory ceiling (Anthropic's task budgets count
@@ -157,6 +171,21 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
       summary = block.text.slice(0, 500);
     }
 
+    // Anthropic's server-side tools (web_search/web_fetch) ran and resolved
+    // within this same call - there's nothing for the tool registry to
+    // execute (see @katnor/llm's ServerToolBlock doc comment), but it's
+    // still worth a trace entry so the Runs page shows "the model searched
+    // the web" rather than the step silently vanishing.
+    for (const block of result.content.filter(isServerToolBlock)) {
+      seq += 1;
+      await runStepRepo.create({
+        run_id: runId,
+        seq,
+        kind: 'tool_call',
+        payload: { server_tool: true, raw: block.raw },
+      });
+    }
+
     if (result.stopReason === 'error') {
       outcome = 'failed';
       summary = result.errorMessage ?? 'The provider returned an unspecified error.';
@@ -199,7 +228,13 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
         payload: { name: toolUse.name, input: toolUse.input },
       });
 
-      const execResult = await agentToolRegistry.execute(toolUse.name, toolUse.input, toolCtx);
+      const mcpTool = mcpToolsByName.get(toolUse.name);
+      const execResult = mcpTool
+        ? await mcpTool.execute(toolUse.input, toolCtx).catch((err: unknown) => ({
+            content: `Tool "${toolUse.name}" threw an error: ${err instanceof Error ? err.message : String(err)}`,
+            isError: true,
+          }))
+        : await agentToolRegistry.execute(toolUse.name, toolUse.input, toolCtx);
 
       seq += 1;
       await runStepRepo.create({

@@ -1,6 +1,7 @@
-import type { AskHumanPayload, TaskPriority } from '@katnor/core';
-import { DEFAULT_BOARD_COLUMNS, TASK_PRIORITIES } from '@katnor/core';
-import { agentRepo, approvalRepo, channelRepo, eventRepo, messageRepo, projectRepo, taskRepo } from '@katnor/db';
+import type { ArtifactKind, AskHumanPayload, TaskPriority } from '@katnor/core';
+import { ARTIFACT_KINDS, DEFAULT_BOARD_COLUMNS, TASK_PRIORITIES } from '@katnor/core';
+import { saveArtifact } from '@katnor/artifacts';
+import { agentRepo, approvalRepo, artifactRepo, channelRepo, eventRepo, messageRepo, projectRepo, taskRepo } from '@katnor/db';
 import type { ToolDefinition } from '@katnor/tools';
 import type { AgentToolContext } from './context.js';
 import { postMessage } from './messaging.js';
@@ -345,6 +346,88 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       }
 
       return { content: `Updated task "${updated.id}" (status: ${updated.status}, assignee: ${updated.assignee_id ?? 'none'}).` };
+    },
+  },
+
+  {
+    name: 'save_artifact',
+    description:
+      'Save a file, diff, PR link, doc, image, or report as an artifact linked to this run\'s task/project - it shows up in the dashboard\'s Artifacts view and on the task card.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        kind: { type: 'string', enum: [...ARTIFACT_KINDS] },
+        title: { type: 'string' },
+        content: { type: 'string', description: 'Text content - e.g. file contents, a diff, a PR/design URL, a report.' },
+        artifact_group_id: {
+          type: 'string',
+          description: 'Set to add a new version to an existing artifact instead of starting a new one.',
+        },
+      },
+      required: ['kind', 'title', 'content'],
+      additionalProperties: false,
+    },
+    async execute(input, ctx) {
+      const kind = str(input, 'kind');
+      const title = str(input, 'title');
+      const content = str(input, 'content');
+      if (!kind || !(ARTIFACT_KINDS as readonly string[]).includes(kind) || !title || !content) {
+        return {
+          content: `save_artifact requires kind (one of ${ARTIFACT_KINDS.join(', ')}), title, and content.`,
+          isError: true,
+        };
+      }
+      const created = await saveArtifact({
+        projectId: ctx.project?.id ?? null,
+        taskId: ctx.task?.id ?? null,
+        runId: ctx.run.id,
+        artifactGroupId: str(input, 'artifact_group_id'),
+        kind: kind as ArtifactKind,
+        title,
+        content,
+      });
+      return { content: `Saved artifact "${created.title}" (${created.id}, v${created.version}).` };
+    },
+  },
+
+  {
+    name: 'request_review',
+    description: 'Ask a colleague to review an artifact you produced (e.g. a PR or a doc) - DMs them with it attached.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        agent_id: { type: 'string' },
+        artifact_id: { type: 'string' },
+        note: { type: 'string', description: 'What you want reviewed and any context - defaults to a generic prompt.' },
+      },
+      required: ['agent_id', 'artifact_id'],
+      additionalProperties: false,
+    },
+    async execute(input, ctx) {
+      const agentId = str(input, 'agent_id');
+      const artifactId = str(input, 'artifact_id');
+      if (!agentId || !artifactId) {
+        return { content: 'request_review requires agent_id and artifact_id.', isError: true };
+      }
+      const [colleague, artifact] = await Promise.all([agentRepo.getById(agentId), artifactRepo.getById(artifactId)]);
+      if (!colleague) {
+        return { content: `No agent "${agentId}".`, isError: true };
+      }
+      if (!artifact) {
+        return { content: `No artifact "${artifactId}".`, isError: true };
+      }
+
+      const note = str(input, 'note') ?? `Please review "${artifact.title}".`;
+      const dm = await channelRepo.getOrCreateDm(agentId);
+      const created = await postMessage(ctx.boss, {
+        channelId: dm.id,
+        authorType: 'agent',
+        authorId: ctx.agent.id,
+        content: note,
+        mentions: [agentId],
+        attachments: [{ artifact_id: artifact.id }],
+      });
+      return { content: `Sent review request for "${artifact.title}" to ${colleague.name} (message ${created.id}).` };
     },
   },
 ];

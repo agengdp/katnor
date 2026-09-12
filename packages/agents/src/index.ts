@@ -7,5 +7,7 @@ export * from './queues.js';
 export * from './trigger.js';
 export * from './messaging.js';
 export * from './hiring.js';
+export * from './mcpTools.js';
+export * from './workTools.js';
 export * from './registry.js';
 export * from './runExecutor.js';

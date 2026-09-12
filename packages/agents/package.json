@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@katnor/artifacts": "workspace:*",
     "@katnor/core": "workspace:*",
     "@katnor/db": "workspace:*",
     "@katnor/llm": "workspace:*",

@@ -3,6 +3,50 @@ import { channelRepo, eventRepo, messageRepo } from '@katnor/db';
 import type PgBoss from 'pg-boss';
 import { triggerRun } from './trigger.js';
 
+// PLAN.md 4.2's "anti-chatter limits" - two independent guards against an
+// agent-to-agent conversation looping forever: a plain rate limit (one
+// agent posting too fast into one channel) and a "thread escalation" that
+// catches a *mutual* loop a per-author rate limit alone would miss (two
+// agents ping-ponging just under the rate limit, neither ever resolving
+// anything). Both only ever suppress *waking* anyone further - the message
+// itself is still recorded, so nothing about the conversation is lost, and
+// a human or a later poll can still see it happened via the
+// `chatter.limited` event.
+const CHATTER_RATE_LIMIT_WINDOW_MS = 60_000;
+const CHATTER_RATE_LIMIT_MAX_MESSAGES = 8;
+const CHATTER_ESCALATION_TAIL_LENGTH = 12;
+
+interface ChatterVerdict {
+  suppressWake: boolean;
+  reason: 'rate_limit' | 'thread_escalation' | null;
+}
+
+async function evaluateAntiChatter(channelId: string, authorId: string): Promise<ChatterVerdict> {
+  // messageRepo.list is capped at the most recent 200 (oldest-first), which
+  // is plenty of lookback for both checks below.
+  const recent = await messageRepo.list(channelId);
+
+  const cutoff = Date.now() - CHATTER_RATE_LIMIT_WINDOW_MS;
+  const recentFromAuthor = recent.filter(
+    (row) => row.author_id === authorId && row.created_at.getTime() >= cutoff,
+  );
+  if (recentFromAuthor.length >= CHATTER_RATE_LIMIT_MAX_MESSAGES) {
+    return { suppressWake: true, reason: 'rate_limit' };
+  }
+
+  // A run of consecutive agent-authored messages this long, with no human
+  // message interleaved, means nobody's actually resolving anything - stop
+  // waking people until a human weighs in (visible via the Inbox/event feed).
+  const tail = recent.slice(-CHATTER_ESCALATION_TAIL_LENGTH);
+  const isUnbrokenAgentChatter =
+    tail.length >= CHATTER_ESCALATION_TAIL_LENGTH && tail.every((row) => row.author_type === 'agent');
+  if (isUnbrokenAgentChatter) {
+    return { suppressWake: true, reason: 'thread_escalation' };
+  }
+
+  return { suppressWake: false, reason: null };
+}
+
 export interface PostMessageInput {
   channelId: string;
   authorType: AuthorType;
@@ -70,9 +114,23 @@ export async function postMessage(boss: PgBoss, input: PostMessageInput) {
   }
   toWake.delete(input.authorId); // never wake an agent on its own message
 
-  const trigger: RunTrigger = input.trigger ?? (input.authorType === 'human' ? 'human' : 'mention');
-  for (const agentId of toWake) {
-    await triggerRun(boss, { agentId, taskId: channel.task_id, channelId: channel.id, trigger });
+  // Anti-chatter only applies to agent-authored messages - a human posting
+  // rapidly, or a long agent discussion the owner is actively part of, is
+  // never what this is guarding against.
+  const chatterVerdict: ChatterVerdict =
+    input.authorType === 'agent' ? await evaluateAntiChatter(channel.id, input.authorId) : { suppressWake: false, reason: null };
+  if (chatterVerdict.suppressWake) {
+    await eventRepo.append({
+      type: 'chatter.limited',
+      payload: { channel_id: channel.id, author_id: input.authorId, reason: chatterVerdict.reason },
+    });
+  }
+
+  if (!chatterVerdict.suppressWake) {
+    const trigger: RunTrigger = input.trigger ?? (input.authorType === 'human' ? 'human' : 'mention');
+    for (const agentId of toWake) {
+      await triggerRun(boss, { agentId, taskId: channel.task_id, channelId: channel.id, trigger });
+    }
   }
 
   return created;
