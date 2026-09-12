@@ -183,6 +183,21 @@ interface OpenAiChatCompletionResponse {
   usage?: { prompt_tokens: number; completion_tokens: number };
 }
 
+/**
+ * Every failure path in `step()` below returns this shape rather than
+ * throwing - same convention as ./anthropic.ts's `step()` and
+ * ./google.ts's `step()`.
+ */
+function errorResult(errorMessage: string): StepResult {
+  return {
+    content: [],
+    stopReason: 'error',
+    usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
+    costUsd: 0,
+    errorMessage,
+  };
+}
+
 export class OpenAiCompatibleProvider implements LLMProvider {
   readonly id: ModelProvider = 'openai_compatible';
 
@@ -205,13 +220,7 @@ export class OpenAiCompatibleProvider implements LLMProvider {
   async step(input: StepInput): Promise<StepResult> {
     const config = await readConfig();
     if ('error' in config) {
-      return {
-        content: [],
-        stopReason: 'error',
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
-        costUsd: 0,
-        errorMessage: config.error,
-      };
+      return errorResult(config.error);
     }
 
     const openAiTools = toOpenAiTools(input.tools);
@@ -235,77 +244,72 @@ export class OpenAiCompatibleProvider implements LLMProvider {
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
-      return {
-        content: [],
-        stopReason: 'error',
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
-        costUsd: 0,
-        errorMessage: `OpenAI-compatible endpoint request failed: ${message}`,
-      };
+      return errorResult(`OpenAI-compatible endpoint request failed: ${message}`);
     }
 
-    if (!response.ok) {
-      const body = await response.text();
-      return {
-        content: [],
-        stopReason: 'error',
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
-        costUsd: 0,
-        errorMessage: `OpenAI-compatible endpoint returned ${response.status}: ${body.slice(0, 500)}`,
-      };
-    }
-
-    const json = (await response.json()) as OpenAiChatCompletionResponse;
-    const choice = json.choices[0];
-    if (!choice) {
-      return {
-        content: [],
-        stopReason: 'error',
-        usage: { inputTokens: 0, outputTokens: 0, cacheReadTokens: 0, cacheCreationTokens: 0 },
-        costUsd: 0,
-        errorMessage: 'OpenAI-compatible endpoint returned no choices.',
-      };
-    }
-
-    const content: ContentBlock[] = [];
-    if (choice.message.content && choice.message.content.trim().length > 0) {
-      content.push({ type: 'text', text: choice.message.content });
-    }
-    for (const toolCall of choice.message.tool_calls ?? []) {
-      let parsedInput: Record<string, unknown> = {};
-      try {
-        parsedInput = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
-      } catch {
-        // A non-conforming server sent unparseable JSON arguments - surface
-        // the raw string to the model/tool rather than crashing the run;
-        // most tool schemas will reject this shape on their own, which is
-        // a clearer failure than losing the call entirely.
-        console.warn(
-          `[llm/openai-compatible] tool call "${toolCall.function.name}" had unparseable arguments:`,
-          toolCall.function.arguments,
+    // Reading the body (`.text()`/`.json()`) can itself throw - a dropped
+    // connection mid-read, or a server returning a truncated or non-JSON
+    // body - so this whole section is wrapped rather than just the
+    // initial `fetch()` call above, to keep the "every failure path
+    // returns `errorResult()`, never throws" contract intact.
+    try {
+      if (!response.ok) {
+        const body = await response.text();
+        return errorResult(
+          `OpenAI-compatible endpoint returned ${response.status}: ${body.slice(0, 500)}`,
         );
       }
-      content.push({ type: 'tool_use', id: toolCall.id, name: toolCall.function.name, input: parsedInput });
+
+      const json = (await response.json()) as OpenAiChatCompletionResponse;
+      const choice = json.choices[0];
+      if (!choice) {
+        return errorResult('OpenAI-compatible endpoint returned no choices.');
+      }
+
+      const content: ContentBlock[] = [];
+      if (choice.message.content && choice.message.content.trim().length > 0) {
+        content.push({ type: 'text', text: choice.message.content });
+      }
+      for (const toolCall of choice.message.tool_calls ?? []) {
+        let parsedInput: Record<string, unknown> = {};
+        try {
+          parsedInput = JSON.parse(toolCall.function.arguments) as Record<string, unknown>;
+        } catch {
+          // A non-conforming server sent unparseable JSON arguments -
+          // surface the raw string to the model/tool rather than crashing
+          // the run; most tool schemas will reject this shape on their
+          // own, which is a clearer failure than losing the call entirely.
+          console.warn(
+            `[llm/openai-compatible] tool call "${toolCall.function.name}" had unparseable arguments:`,
+            toolCall.function.arguments,
+          );
+        }
+        content.push({ type: 'tool_use', id: toolCall.id, name: toolCall.function.name, input: parsedInput });
+      }
+
+      const usage = {
+        inputTokens: json.usage?.prompt_tokens ?? 0,
+        outputTokens: json.usage?.completion_tokens ?? 0,
+        cacheReadTokens: 0,
+        cacheCreationTokens: 0,
+      };
+
+      return {
+        content,
+        stopReason: toStopReason(choice.finish_reason),
+        usage,
+        // No generic price table exists for arbitrary third-party
+        // endpoints the way ./pricing.ts has for Anthropic's own models -
+        // reported as $0 rather than guessed at, so budget/cost-dashboard
+        // numbers stay honest (an OpenAI-compatible hire's spend is
+        // currently untracked, not "free"; a future phase could add a
+        // configurable $/MTok rate on `provider_config` per PLAN.md 4.7's
+        // cost tracking).
+        costUsd: 0,
+      };
+    } catch (err) {
+      const message = err instanceof Error ? err.message : String(err);
+      return errorResult(`Failed to read OpenAI-compatible endpoint response: ${message}`);
     }
-
-    const usage = {
-      inputTokens: json.usage?.prompt_tokens ?? 0,
-      outputTokens: json.usage?.completion_tokens ?? 0,
-      cacheReadTokens: 0,
-      cacheCreationTokens: 0,
-    };
-
-    return {
-      content,
-      stopReason: toStopReason(choice.finish_reason),
-      usage,
-      // No generic price table exists for arbitrary third-party endpoints
-      // the way ./pricing.ts has for Anthropic's own models - reported as
-      // $0 rather than guessed at, so budget/cost-dashboard numbers stay
-      // honest (an OpenAI-compatible hire's spend is currently untracked,
-      // not "free"; a future phase could add a configurable $/MTok rate on
-      // `provider_config` per PLAN.md 4.7's cost tracking).
-      costUsd: 0,
-    };
   }
 }
