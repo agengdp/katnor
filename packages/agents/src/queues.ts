@@ -15,20 +15,30 @@ import PgBoss from 'pg-boss';
  *   ./runExecutor.ts (the enqueue side) and @katnor/knowledge's
  *   librarian.ts (the handler logic, wired up by apps/worker).
  * - WIKI_LINT: the contradiction/orphan-page/stale-fact/missing-page sweep
- *   (PLAN.md §4.5). Implemented in Phase 3 - see @katnor/knowledge's
- *   wikiLint.ts. Triggered manually (apps/server's `knowledge.lintProject`)
- *   for now; real scheduling ("weekly wiki lint") is PLAN.md Phase 5.
+ *   (PLAN.md §4.5). Implemented in Phase 3 (@katnor/knowledge's
+ *   wikiLint.ts) as a manual trigger only; Phase 5 adds a weekly
+ *   `boss.schedule()` cron alongside it (see apps/worker/src/index.ts) -
+ *   a scheduled firing omits `projectId` from the job data, which both
+ *   this queue's and MANAGER_STANDUP's handlers treat as "every project",
+ *   fanning out themselves rather than pg-boss registering one schedule
+ *   per project.
  * - CODE_INDEX: the heuristic import-graph indexer over a project's
  *   configured repos (PLAN.md §4.4's code indexer). Implemented in
  *   Phase 3 - see @katnor/knowledge's codeIndexer.ts. Triggered manually
  *   (apps/server's `knowledge.reindexCode`) - PLAN.md's "incremental, per
- *   commit" automatic triggering is deferred, same reasoning as WIKI_LINT.
+ *   commit" automatic triggering is still deferred (unlike WIKI_LINT,
+ *   there's no natural fixed cadence for "a commit happened").
+ * - MANAGER_STANDUP: PLAN.md §4.2's daily "managers get a stand-up run
+ *   that summarises threads into the wiki and closes stale ones" -
+ *   implemented per-project rather than per-manager-agent (see
+ *   @katnor/agents' standup.ts), scheduled daily alongside WIKI_LINT.
  */
 export const QUEUES = {
   AGENT_RUN: 'agent-run',
   LIBRARIAN_INGEST: 'librarian-ingest',
   WIKI_LINT: 'wiki-lint',
   CODE_INDEX: 'code-index',
+  MANAGER_STANDUP: 'manager-standup',
 } as const;
 
 export type QueueName = (typeof QUEUES)[keyof typeof QUEUES];
