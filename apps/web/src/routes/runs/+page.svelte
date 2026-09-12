@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { page } from '$app/stores';
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents, type KatnorEvent } from '$lib/eventsSocket';
 
@@ -103,7 +104,9 @@
   const RUN_LIFECYCLE_EVENTS = new Set(['run.started', 'run.step_recorded', 'run.finished']);
 
   let agents = $state<AgentRow[]>([]);
-  let agentFilter = $state(''); // '' = "All agents"
+  // '' = "All agents" - initialized from `?agent=<id>` so the office page's
+  // "view full trace" link can deep-link straight to one agent's runs.
+  let agentFilter = $state($page.url.searchParams.get('agent') ?? '');
 
   let runs = $state<RunRow[]>([]);
   let runsLoading = $state(true);

@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import { goto } from '$app/navigation';
   import { trpc } from '$lib/trpc';
+  import { subscribeToEvents } from '$lib/eventsSocket';
 
   let { children } = $props();
 
@@ -22,6 +23,33 @@
   $effect(() => {
     refreshAuth();
   });
+
+  // Cost meter: real spend-vs-budget data (apps/server's runs.todaySpend -
+  // added in Phase 4 alongside the office's day/night tint, which reads
+  // the same numbers), refreshed on every finished run rather than polled.
+  let spend = $state<{ spentUsd: number; budgetUsd: number } | null>(null);
+
+  async function refreshSpend() {
+    try {
+      spend = await trpc().runs.todaySpend.query();
+    } catch {
+      // apps/server may not be reachable yet - the chip just stays quiet
+      // until the next successful refresh.
+    }
+  }
+
+  $effect(() => {
+    refreshSpend();
+  });
+
+  $effect(() => {
+    const unsubscribe = subscribeToEvents((event) => {
+      if (event.type === 'run.finished') refreshSpend();
+    });
+    return unsubscribe;
+  });
+
+  const overBudget = $derived(spend !== null && spend.budgetUsd > 0 && spend.spentUsd >= spend.budgetUsd);
 
   async function logout() {
     await trpc().auth.logout.mutate();
@@ -56,15 +84,18 @@
       <span>Katnor</span>
     </a>
 
-    <!-- Placeholder cost-meter chip. TODO(phase 1): wire this to live
-         spend data (per-run token/cost accounting) over the WebSocket
-         event stream instead of a hardcoded value. -->
     <div
       class="flex shrink-0 items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs text-[var(--color-text-muted)]"
-      title="Spend so far today across all agents (placeholder)"
+      title="Spend so far today across all agents, against the company's daily budget"
     >
-      <span aria-hidden="true" class="text-[var(--color-success)]">●</span>
-      <span>$0.00 today</span>
+      <span aria-hidden="true" class={overBudget ? 'text-[var(--color-danger)]' : 'text-[var(--color-success)]'}>●</span>
+      <span>
+        {#if spend === null}
+          $0.00 today
+        {:else}
+          ${spend.spentUsd.toFixed(2)}{spend.budgetUsd > 0 ? ` / $${spend.budgetUsd.toFixed(2)}` : ''} today
+        {/if}
+      </span>
     </div>
 
     {#if authenticated}

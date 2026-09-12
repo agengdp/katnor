@@ -13,6 +13,7 @@
   } from '@katnor/core';
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents } from '$lib/eventsSocket';
+  import { liveStatusStore, type LiveAgentState } from '$lib/office/liveStatus.svelte';
 
   // ---- Wire shapes --------------------------------------------------------
   // @katnor/core types `created_at`/`updated_at` as `Date` (see
@@ -156,6 +157,7 @@
       const [agentRows, teamRows] = await Promise.all([client.agents.list.query(), client.teams.list.query()]);
       agents = agentRows as unknown as AgentRow[];
       teams = teamRows as unknown as TeamRow[];
+      for (const agent of agents) liveStatusStore.seedFromAgentStatus(agent.id, agent.status);
     } catch (err) {
       // A background refresh (triggered by a live event, or right after a
       // mutation) failing quietly isn't worth surfacing - the initial load
@@ -181,6 +183,36 @@
     });
     return unsubscribe;
   });
+
+  // PLAN.md 4.8's accessibility fallback: "the Team page shows the same
+  // live status list" as the Office - same shared store, so the two never
+  // disagree about what an agent is currently doing.
+  $effect(() => {
+    liveStatusStore.start();
+    return () => liveStatusStore.stop();
+  });
+
+  const liveStateLabels: Record<LiveAgentState, string> = {
+    idle: 'Idle',
+    working: 'Working',
+    talking: 'Talking',
+    waiting_human: 'Waiting on you',
+    blocked: 'Blocked',
+    offline: 'Offline'
+  };
+
+  const liveStateDotClasses: Record<LiveAgentState, string> = {
+    idle: 'bg-[var(--color-text-muted)]',
+    working: 'bg-[var(--color-accent)]',
+    talking: 'bg-[var(--color-accent)]',
+    waiting_human: 'bg-[var(--color-danger)]',
+    blocked: 'bg-[var(--color-danger)]',
+    offline: 'bg-[var(--color-text-muted)]'
+  };
+
+  function liveState(agent: AgentRow): LiveAgentState {
+    return agent.status !== 'active' ? 'offline' : liveStatusStore.get(agent.id).state;
+  }
 
   // ---- Fire -----------------------------------------------------------------
   type RowUi = { firing: boolean; fireError: string | null };
@@ -437,6 +469,14 @@
           >
             {agent.status}
           </span>
+          {#if agent.status === 'active'}
+            {@const state = liveState(agent)}
+            {@const detail = liveStatusStore.get(agent.id).detail}
+            <span class="flex items-center gap-1.5 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs">
+              <span class="h-1.5 w-1.5 rounded-full {liveStateDotClasses[state]}"></span>
+              {liveStateLabels[state]}{detail ? ` - ${detail}` : ''}
+            </span>
+          {/if}
         </div>
         <p class="text-sm text-[var(--color-text-muted)]">{agent.title}</p>
         {#if !agent.is_system}
