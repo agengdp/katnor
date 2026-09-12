@@ -44,7 +44,7 @@ You  ──task──▶ CEO ──hires──▶ PM, Tech Lead, Backend Dev, Fr
    (Anthropic required, others optional), a company name, and a default model.
 2. The office shows one desk: the **CEO** (default model `claude-opus-5`).
 3. You post in the `#general` channel: *"Create a software development team and build me a
-   todo app with a Next.js frontend and a Postgres backend."*
+   todo app with a SvelteKit frontend and a Postgres backend."*
 4. The CEO run starts. It calls `hire_agent` several times, e.g.:
    - "Maya Chen" — Product Manager — `claude-opus-5`
    - "Tomasz Nowak" — Tech Lead — `claude-opus-5`
@@ -78,7 +78,7 @@ You  ──task──▶ CEO ──hires──▶ PM, Tech Lead, Backend Dev, Fr
 ### 2.1 High-level architecture
 
 ```
-┌──────────────────────────────── apps/web (Next.js) ────────────────────────────────┐
+┌─────────────────────────────── apps/web (SvelteKit) ───────────────────────────────┐
 │  Office (Phaser 3)  │ Kanban │ Team & Agent config │ Chat │ Knowledge (graph+wiki) │
 │  Artifacts │ Runs & Costs │ Settings (providers, tools/MCP, budgets, approvals)    │
 └───────────────▲──────────────────────────────▲──────────────────────────────────────┘
@@ -109,11 +109,11 @@ one process.
 |---|---|---|
 | Language | TypeScript everywhere (Node 22) | One language for web, server, worker, and the Claude Agent SDK |
 | Monorepo | pnpm workspaces + Turborepo | Shared packages, fast CI |
-| Web | Next.js (App Router), React, Tailwind, shadcn/ui, TanStack Query, Zustand | Standard, fast to build a dashboard |
-| 2D office | Phaser 3 (inside a React page), Tiled maps, pixel-art tilesets | Built-in tilemaps, sprites, animation, pathfinding plugins |
-| Kanban | dnd-kit | Accessible drag-and-drop |
+| Web | SvelteKit (Svelte 5, runes), Tailwind, shadcn-svelte, TanStack Query (Svelte), Svelte stores for live state | Small bundles, reactive by default, simple to keep live data in sync |
+| 2D office | Phaser 3 (inside a Svelte component), Tiled maps, pixel-art tilesets | Built-in tilemaps, sprites, animation, pathfinding plugins |
+| Kanban | svelte-dnd-action | Drag-and-drop built for Svelte, keyboard accessible |
 | Graph view | Sigma.js + graphology | Renders thousands of nodes in WebGL |
-| API | Hono + tRPC + zod | End-to-end types, tiny footprint |
+| API | Hono + tRPC + zod (tRPC client via trpc-sveltekit) | End-to-end types, tiny footprint |
 | Realtime | WebSocket (`ws`) fed by Postgres LISTEN/NOTIFY | No extra broker |
 | DB | Postgres 16 + pgvector, Drizzle ORM | Relational data, vectors, and graph tables in one DB |
 | Queue | pg-boss | Durable jobs without Redis |
@@ -131,7 +131,7 @@ one process.
 ```
 katnor/
 ├── apps/
-│   ├── web/                # Next.js dashboard + 2D office
+│   ├── web/                # SvelteKit dashboard + 2D office
 │   ├── server/             # Hono + tRPC + WebSocket API
 │   └── worker/             # agent runtime, scheduler, librarian
 ├── packages/
@@ -142,7 +142,7 @@ katnor/
 │   ├── tools/              # tool registry, MCP client, sandbox tools, coding-agent tools
 │   ├── knowledge/          # knowledge graph, wiki librarian, embeddings, search
 │   ├── artifacts/          # artifact storage + viewers metadata
-│   └── ui/                 # shared React components
+│   └── ui/                 # shared Svelte components
 ├── sandbox/                # Dockerfile for the workspace image (node, python, git, claude, codex)
 ├── assets/office/          # tilesets, sprites, Tiled maps (with licenses)
 ├── docs/                   # ADRs, prompts, runbooks
@@ -381,7 +381,7 @@ event stream (no game logic on the server beyond events).
   right-click → assign task / edit model; hover a bubble → full message; click the whiteboard,
   bookshelf, or rack → open the matching dashboard page; day/night tint follows spend vs. daily
   budget (a subtle way to see cost).
-- **Tech:** Phaser 3 scene mounted in a React component; grid-based pathfinding (EasyStar.js);
+- **Tech:** Phaser 3 scene mounted in a Svelte component; grid-based pathfinding (EasyStar.js);
   events → a small state machine per sprite; assets from a permissively licensed pack (e.g.
   LimeZu "Modern Office" or Kenney) with licenses stored in `assets/office/LICENSES.md`.
 
@@ -423,7 +423,7 @@ up live in the browser.
   outputs, cost accounting), the run executor, run/step tracing, and the Runs page.
 - Company tools: messaging, tasks, `ask_human`; CEO tools: hire/update/fire/create_team.
 - Chat page (channels, threads, mentions), Team page (org chart + agent editor), Projects +
-  kanban (dnd-kit) with live updates.
+  kanban (svelte-dnd-action) with live updates.
 - Hire approval policy and Inbox.
 
 **Done when:** posting "build a software development team for a todo app" makes the CEO hire a
@@ -496,7 +496,7 @@ waiting on you, and click any of them to intervene.
 3. **Docker sandboxes per project**, host mode for development.
 4. **Anthropic is the primary provider**; CEO defaults to `claude-opus-5`; hires may use any
    configured provider/model. Claude Code runs through the Claude Agent SDK.
-5. **Phaser 3** for the office, embedded in the Next.js app.
+5. **Phaser 3** for the office, embedded in the SvelteKit app.
 6. **Librarian is a system job**, not a hired employee, so the "only the CEO exists on first
    run" rule holds. The CEO may still hire a "Knowledge Manager" employee whose tools include
    wiki editing.
