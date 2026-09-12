@@ -23,6 +23,7 @@ import type {
   StepInput,
   StepResult,
   StepStopReason,
+  ToolChoice,
 } from './types.js';
 
 /**
@@ -157,6 +158,14 @@ const TASK_BUDGET_BETA = 'task-budgets-2026-03-13';
 const THINKING_UPDATES_BETA = 'thinking-display-updates-2026-08-18';
 /** Anthropic requires a task budget of at least this many tokens. */
 const MIN_TASK_BUDGET_TOKENS = 20_000;
+
+/** Maps this system's provider-agnostic `ToolChoice` to Anthropic's `tool_choice` request field. */
+function toAnthropicToolChoice(choice: ToolChoice | undefined): Anthropic.Beta.BetaToolChoice {
+  if (choice?.type === 'tool') {
+    return { type: 'tool', name: choice.name } as Anthropic.Beta.BetaToolChoice;
+  }
+  return { type: 'auto' };
+}
 
 /** The concrete Anthropic tool `type` string for a `ProviderTool.serverType` tag, per model generation. */
 function resolveServerToolType(tag: 'web_search' | 'web_fetch', generation: ModelProfile['webToolGeneration']): string {
@@ -355,7 +364,7 @@ export class AnthropicProvider implements LLMProvider {
       max_tokens: input.maxTokens,
       system: [{ type: 'text' as const, text: input.systemPrompt, cache_control: { type: 'ephemeral' as const } }],
       tools: toAnthropicTools(input.tools, profile),
-      tool_choice: { type: 'auto' as const },
+      tool_choice: toAnthropicToolChoice(input.toolChoice),
       messages: input.messages.map(toAnthropicMessage),
       ...(thinking ? { thinking } : {}),
       ...(Object.keys(outputConfig).length > 0 ? { output_config: outputConfig } : {}),

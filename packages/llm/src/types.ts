@@ -97,6 +97,18 @@ export interface ProviderTool {
   serverType?: 'web_search' | 'web_fetch';
 }
 
+/**
+ * Forces (or leaves automatic) which tool the model must call this step.
+ * Defaults to `{ type: 'auto' }` when omitted - the model decides whether
+ * to call a tool at all, same as every agent run. `{ type: 'tool', name }`
+ * is PLAN.md 4.4's "structured outputs" extraction call: forcing a single,
+ * schema-constrained tool call is this system's stand-in for a dedicated
+ * JSON-mode API (see @katnor/knowledge/src/extraction.ts, its only caller)
+ * without depending on a provider feature this sandbox has no way to
+ * verify against a live API.
+ */
+export type ToolChoice = { type: 'auto' } | { type: 'tool'; name: string };
+
 export interface StepInput {
   systemPrompt: string;
   messages: ProviderMessage[];
@@ -108,6 +120,8 @@ export interface StepInput {
   temperature?: number;
   /** Advisory token ceiling for the whole run, if the provider supports pacing itself against one. */
   taskBudgetTokens?: number;
+  /** Defaults to `{ type: 'auto' }` - see `ToolChoice`'s doc comment. */
+  toolChoice?: ToolChoice;
 }
 
 export interface StepUsage {
