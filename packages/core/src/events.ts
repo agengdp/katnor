@@ -84,6 +84,10 @@ const runStepRecordedEvent = z.object({
   run_step_id: z.string(),
   seq: z.number().int().nonnegative(),
   kind: z.enum(RUN_STEP_KINDS),
+  agent_id: z.string(),
+  task_id: z.string().nullable(),
+  /** A short, human-readable detail for live status displays - e.g. a tool name for `kind: "tool_call"`. Null for kinds with nothing worth surfacing live (see PLAN.md 4.8's "working" bubble text). */
+  detail: z.string().nullable(),
 });
 
 const runFinishedEvent = z.object({

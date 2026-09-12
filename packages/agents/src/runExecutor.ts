@@ -1,6 +1,6 @@
 import type { ContentBlock, ProviderMessage } from '@katnor/llm';
 import { getProvider } from '@katnor/llm';
-import type { RunStatus } from '@katnor/core';
+import type { RunStatus, RunStepKind } from '@katnor/core';
 import { agentRepo, companyRepo, eventRepo, messageRepo, projectRepo, runRepo, runStepRepo, taskRepo } from '@katnor/db';
 import type PgBoss from 'pg-boss';
 import type { AgentToolContext } from './context.js';
@@ -27,6 +27,44 @@ function isToolUseBlock(block: ContentBlock): block is Extract<ContentBlock, { t
 }
 function isServerToolBlock(block: ContentBlock): block is Extract<ContentBlock, { type: 'server_tool' }> {
   return block.type === 'server_tool';
+}
+
+/**
+ * Records one `run_step` row and, in the same call, the live
+ * `run.step_recorded` event the office/Team page's live-status displays
+ * are driven by (PLAN.md 4.8) - the two always go together, so every call
+ * site in this file goes through here rather than `runStepRepo.create`
+ * directly.
+ */
+async function recordStep(
+  runId: string,
+  agentId: string,
+  taskId: string | null,
+  seq: number,
+  kind: RunStepKind,
+  payload: Record<string, unknown>,
+  opts: { tokens?: number; durationMs?: number; detail?: string | null } = {},
+): Promise<void> {
+  const created = await runStepRepo.create({
+    run_id: runId,
+    seq,
+    kind,
+    payload,
+    tokens: opts.tokens ?? null,
+    duration_ms: opts.durationMs ?? null,
+  });
+  await eventRepo.append({
+    type: 'run.step_recorded',
+    payload: {
+      run_id: runId,
+      run_step_id: created.id,
+      seq,
+      kind,
+      agent_id: agentId,
+      task_id: taskId,
+      detail: opts.detail ?? null,
+    },
+  });
 }
 
 /**
@@ -119,6 +157,7 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
   // profile table) just ignore this field.
   const taskBudgetTokens = Math.max(20_000, agent.model_config.max_tokens * 6);
 
+  const taskId = task?.id ?? null;
   let seq = 0;
   let tokensIn = 0;
   let tokensOut = 0;
@@ -146,30 +185,31 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     costUsd += result.costUsd;
 
     seq += 1;
-    await runStepRepo.create({
-      run_id: runId,
+    await recordStep(
+      runId,
+      agent.id,
+      taskId,
       seq,
-      kind: 'llm_call',
-      payload: {
+      'llm_call',
+      {
         stop_reason: result.stopReason,
         model: agent.model_config.model,
         usage: result.usage,
         refusal_category: result.refusalCategory ?? null,
       },
-      tokens: result.usage.inputTokens + result.usage.outputTokens,
-      duration_ms: stepDurationMs,
-    });
+      { tokens: result.usage.inputTokens + result.usage.outputTokens, durationMs: stepDurationMs },
+    );
 
     const thinkingBlock = result.content.find(isThinkingBlock);
     if (thinkingBlock && thinkingBlock.text.trim().length > 0) {
       seq += 1;
-      await runStepRepo.create({ run_id: runId, seq, kind: 'thinking_summary', payload: { text: thinkingBlock.text } });
+      await recordStep(runId, agent.id, taskId, seq, 'thinking_summary', { text: thinkingBlock.text }, { detail: 'thinking' });
     }
 
     for (const block of result.content.filter(isTextBlock)) {
       if (block.text.trim().length === 0) continue;
       seq += 1;
-      await runStepRepo.create({ run_id: runId, seq, kind: 'message', payload: { text: block.text } });
+      await recordStep(runId, agent.id, taskId, seq, 'message', { text: block.text }, { detail: block.text.slice(0, 80) });
       summary = block.text.slice(0, 500);
     }
 
@@ -180,12 +220,15 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     // the web" rather than the step silently vanishing.
     for (const block of result.content.filter(isServerToolBlock)) {
       seq += 1;
-      await runStepRepo.create({
-        run_id: runId,
+      await recordStep(
+        runId,
+        agent.id,
+        taskId,
         seq,
-        kind: 'tool_call',
-        payload: { server_tool: true, raw: block.raw },
-      });
+        'tool_call',
+        { server_tool: true, raw: block.raw },
+        { detail: 'web_search/web_fetch' },
+      );
     }
 
     if (result.stopReason === 'error') {
@@ -223,12 +266,15 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     for (const toolUse of result.content.filter(isToolUseBlock)) {
       const toolStartedAt = Date.now();
       seq += 1;
-      await runStepRepo.create({
-        run_id: runId,
+      await recordStep(
+        runId,
+        agent.id,
+        taskId,
         seq,
-        kind: 'tool_call',
-        payload: { name: toolUse.name, input: toolUse.input },
-      });
+        'tool_call',
+        { name: toolUse.name, input: toolUse.input },
+        { detail: toolUse.name },
+      );
 
       const mcpTool = mcpToolsByName.get(toolUse.name);
       const execResult = mcpTool
@@ -239,13 +285,15 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
         : await agentToolRegistry.execute(toolUse.name, toolUse.input, toolCtx);
 
       seq += 1;
-      await runStepRepo.create({
-        run_id: runId,
+      await recordStep(
+        runId,
+        agent.id,
+        taskId,
         seq,
-        kind: 'tool_result',
-        payload: { name: toolUse.name, is_error: execResult.isError ?? false, content: execResult.content },
-        duration_ms: Date.now() - toolStartedAt,
-      });
+        'tool_result',
+        { name: toolUse.name, is_error: execResult.isError ?? false, content: execResult.content },
+        { durationMs: Date.now() - toolStartedAt },
+      );
 
       toolResults.push({
         type: 'tool_result',
