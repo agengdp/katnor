@@ -89,6 +89,21 @@ function startOfToday(): Date {
  * yet. Wiring that in - pausing and asking the owner instead of refusing
  * outright when the policy isn't "auto" - is a natural extension of this
  * same check, not something this pass implements.
+ *
+ * Two gaps this check does NOT cover, surfaced by a Phase 5 cross-review
+ * rather than something either commit's own comment called out on its
+ * own:
+ * - An agent hired on the "openai_compatible" provider always reports
+ *   `costUsd: 0` (see @katnor/llm's openaiCompatible.ts - no generic price
+ *   table exists for an arbitrary third-party endpoint), so
+ *   `runRepo.sumCostSince` never sees its real spend and this check can
+ *   never block it, however much it actually costs against a paid
+ *   third-party API.
+ * - The scheduled manager-standup and wiki-lint jobs (./standup.ts,
+ *   @katnor/knowledge's wikiLint.ts) call `getProvider('anthropic').step()`
+ *   directly rather than going through `runAgentExecutor`, so they never
+ *   reach this check (or create a `run` row at all) - their cost is both
+ *   unenforced and invisible to the cost dashboards.
  */
 async function checkBudgetHardStop(
   agent: NonNullable<Awaited<ReturnType<typeof agentRepo.getById>>>,

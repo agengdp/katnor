@@ -14,6 +14,19 @@ import { postMessage } from './messaging.js';
  * in-progress tasks are called out in the summary, not auto-transitioned -
  * silently moving a task's status on a schedule risks surprising whoever
  * is actually working it.
+ *
+ * This calls `getProvider('anthropic').step()` directly rather than going
+ * through ./runExecutor.ts's `runAgentExecutor` - there's no agent "run" to
+ * attribute this to (it's a system job, not an employee's turn) and no
+ * `task_id` to hang one off of. One side effect worth knowing about: this
+ * means the call never passes through `runExecutor.ts`'s
+ * `checkBudgetHardStop`, so it runs even if the company is already over
+ * its daily budget, and its cost never reaches `runRepo.sumCostSince` (so
+ * it's invisible to the cost dashboards too). Low-volume/low-token enough
+ * in practice that this hasn't mattered, but a future pass that wants
+ * budget enforcement to be airtight would need to check the company
+ * budget here too, not just assume run-scoped calls are the only ones
+ * that spend money.
  */
 
 const STANDUP_AUTHOR_ID = 'manager-standup';

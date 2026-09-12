@@ -105,6 +105,13 @@ async function findContradictionsAndStaleFacts(projectId: string): Promise<{ con
     .join('\n\n---\n\n')
     .slice(0, MAX_TOTAL_CHARS);
 
+  // Calls the provider directly rather than going through @katnor/agents'
+  // runExecutor.ts - there's no agent "run" to attribute this system job
+  // to. That also means it never reaches that file's Phase 5
+  // `checkBudgetHardStop`: this call runs regardless of the company's
+  // daily budget, and its cost never reaches `runRepo.sumCostSince` (so
+  // it's invisible to the cost dashboards too) - the same caveat
+  // @katnor/agents' standup.ts documents for its own direct provider call.
   const provider = getProvider('anthropic');
   let result;
   try {
