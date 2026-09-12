@@ -71,6 +71,13 @@ services:
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-katnor}
       MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-katnor-dev-secret}
       MINIO_REGION: ${MINIO_REGION:-us-east-1}
+      # The wiki (PLAN.md 4.5) - both server and worker mount the SAME
+      # `wiki-data` volume at the same path so either can read/write/commit
+      # a project's git-backed wiki directly (@katnor/knowledge's
+      # wikiStorage.ts) without going through the other.
+      WIKI_STORAGE_DIR: /data/wiki
+    volumes:
+      - wiki-data:/data/wiki
     ports:
       - "${SERVER_PORT:-3001}:${SERVER_PORT:-3001}"
     networks:
@@ -102,6 +109,8 @@ services:
       SANDBOX_MODE: ${SANDBOX_MODE:-docker}
       SANDBOX_IMAGE: ${SANDBOX_IMAGE:-katnor-sandbox:latest}
       WORKSPACE_HOST_DIR: ${WORKSPACE_HOST_DIR:-/tmp/katnor-workspaces}
+      # See the server service's identical setting - same volume, same path.
+      WIKI_STORAGE_DIR: /data/wiki
     volumes:
       # Lets the worker's dockerode client manage per-project workspace
       # containers on the *host's* Docker daemon (DockerWorkspaceManager -
@@ -112,6 +121,7 @@ services:
       # acceptable for a self-hosted, single-owner app, same trust model as
       # every other "give the agent runner a Docker socket" tool.
       - /var/run/docker.sock:/var/run/docker.sock
+      - wiki-data:/data/wiki
     networks:
       - katnor
 
@@ -139,6 +149,7 @@ services:
 volumes:
   postgres-data:
   minio-data:
+  wiki-data:
 
 networks:
   katnor:

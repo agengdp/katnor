@@ -32,3 +32,6 @@ The full build plan is in [PLAN.md](./PLAN.md).
    it (or with `SANDBOX_MODE=host` in `.env`, which skips Docker entirely and runs those tools
    against a plain local directory - dev-only, no isolation), those two tools simply fail until
    either is set up.
+7. (Optional, PLAN.md 4.4) Set `EMBEDDINGS_API_KEY` in `.env` for vector search over the
+   knowledge graph and wiki (`search_knowledge`/`ask_wiki`/the Knowledge page's Ask tab). Without
+   it, those fall back to plain keyword matching rather than failing.
