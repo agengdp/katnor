@@ -3,7 +3,8 @@ import { APPROVAL_KINDS } from '../enums.js';
 import { withBase } from './base.js';
 import { modelConfigSchema } from './modelConfig.js';
 
-export const approvalModeSchema = z.enum(['auto', 'ask_once_per_project', 'always_ask']);
+export const APPROVAL_MODES = ['auto', 'ask_once_per_project', 'always_ask'] as const;
+export const approvalModeSchema = z.enum(APPROVAL_MODES);
 export type ApprovalMode = z.infer<typeof approvalModeSchema>;
 
 export const approvalPolicySchema = z.object({

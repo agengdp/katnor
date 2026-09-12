@@ -281,6 +281,56 @@
     loadAgents();
   });
 
+  // ─── Cost breakdown (PLAN.md Phase 5) ──────────────────────────────────
+
+  interface CostRow {
+    name: string;
+    totalUsd: number;
+    budgetUsd?: number;
+  }
+  interface CostBreakdown {
+    budgets: { company_daily_usd: number; project_daily_usd?: number; agent_daily_usd?: number };
+    byAgent: CostRow[];
+    byProject: CostRow[];
+  }
+
+  let costs = $state<CostBreakdown | null>(null);
+  let costsOpen = $state(false);
+  let costsLoading = $state(false);
+
+  async function loadCosts() {
+    costsLoading = true;
+    try {
+      costs = (await trpc().runs.costBreakdown.query()) as unknown as CostBreakdown;
+    } catch (err) {
+      console.error('[runs] failed to load cost breakdown:', err);
+    } finally {
+      costsLoading = false;
+    }
+  }
+
+  function toggleCosts() {
+    costsOpen = !costsOpen;
+    if (costsOpen && !costs) loadCosts();
+  }
+
+  $effect(() => {
+    const unsubscribe = subscribeToEvents((event) => {
+      if (event.type === 'run.finished' && costsOpen) loadCosts();
+    });
+    return unsubscribe;
+  });
+
+  function costBarWidth(row: CostRow): number {
+    if (!row.budgetUsd || row.budgetUsd <= 0) return Math.min(100, (row.totalUsd / Math.max(0.01, costs?.budgets.company_daily_usd ?? 1)) * 100);
+    return Math.min(100, (row.totalUsd / row.budgetUsd) * 100);
+  }
+
+  function costBarColor(row: CostRow): string {
+    if (row.budgetUsd && row.budgetUsd > 0 && row.totalUsd >= row.budgetUsd) return 'var(--color-danger)';
+    return 'var(--color-accent)';
+  }
+
   // Runs once on mount, then again every time `agentFilter` changes (see
   // the comment inside loadRuns()).
   $effect(() => {
@@ -353,6 +403,71 @@
       Every agent run - each LLM call and tool call with its tokens and cost.
     </p>
   </div>
+
+  <section class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+    <button type="button" class="flex items-center justify-between gap-3 text-left" onclick={toggleCosts}>
+      <span class="text-lg font-semibold">Today's spend</span>
+      <span class="text-sm text-[var(--color-text-muted)]">{costsOpen ? 'Hide' : 'Show'}</span>
+    </button>
+
+    {#if costsOpen}
+      {#if costsLoading && !costs}
+        <p class="text-sm text-[var(--color-text-muted)]">Loading…</p>
+      {:else if costs}
+        <div class="grid gap-4 sm:grid-cols-2">
+          <div class="flex flex-col gap-2">
+            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">By agent</h3>
+            {#if costs.byAgent.length === 0}
+              <p class="text-xs text-[var(--color-text-muted)]">No spend yet today.</p>
+            {/if}
+            {#each costs.byAgent as row (row.name)}
+              <div class="flex flex-col gap-0.5">
+                <div class="flex justify-between text-xs">
+                  <span>{row.name}</span>
+                  <span class="text-[var(--color-text-muted)]">
+                    ${row.totalUsd.toFixed(2)}{row.budgetUsd ? ` / $${row.budgetUsd.toFixed(2)}` : ''}
+                  </span>
+                </div>
+                <div class="h-1.5 w-full rounded-full bg-[var(--color-surface-muted)]">
+                  <div
+                    class="h-1.5 rounded-full"
+                    style={`width:${costBarWidth(row)}%;background:${costBarColor(row)}`}
+                  ></div>
+                </div>
+              </div>
+            {/each}
+          </div>
+
+          <div class="flex flex-col gap-2">
+            <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">By project</h3>
+            {#if costs.byProject.length === 0}
+              <p class="text-xs text-[var(--color-text-muted)]">No project-scoped spend yet today.</p>
+            {/if}
+            {#each costs.byProject as row (row.name)}
+              {@const budgetUsd = costs.budgets.project_daily_usd}
+              <div class="flex flex-col gap-0.5">
+                <div class="flex justify-between text-xs">
+                  <span>{row.name}</span>
+                  <span class="text-[var(--color-text-muted)]">
+                    ${row.totalUsd.toFixed(2)}{budgetUsd ? ` / $${budgetUsd.toFixed(2)}` : ''}
+                  </span>
+                </div>
+                <div class="h-1.5 w-full rounded-full bg-[var(--color-surface-muted)]">
+                  <div
+                    class="h-1.5 rounded-full"
+                    style={`width:${costBarWidth({ ...row, budgetUsd })}%;background:${costBarColor({ ...row, budgetUsd })}`}
+                  ></div>
+                </div>
+              </div>
+            {/each}
+          </div>
+        </div>
+        <p class="text-xs text-[var(--color-text-muted)]">
+          Company-wide budget: ${costs.budgets.company_daily_usd.toFixed(2)}/day - configurable in Settings.
+        </p>
+      {/if}
+    {/if}
+  </section>
 
   <div class="flex flex-col gap-4 lg:flex-row lg:items-start">
     <!-- Run list -->

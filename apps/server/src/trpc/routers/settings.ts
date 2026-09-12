@@ -1,9 +1,9 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { MODEL_PROVIDERS } from '@katnor/core';
-import { providerConfig, ulid } from '@katnor/db';
+import { approvalModeSchema, MODEL_PROVIDERS } from '@katnor/core';
+import { companyRepo, providerConfig, ulid } from '@katnor/db';
 import { encryptSecret } from '../../crypto.js';
-import { protectedProcedure, router } from '../trpc.js';
+import { protectedProcedure, publicProcedure, router } from '../trpc.js';
 
 type ProviderConfigRow = typeof providerConfig.$inferSelect;
 
@@ -82,4 +82,33 @@ export const settingsRouter = router({
     }
     return toPublicProvider(created);
   }),
+
+  /**
+   * Budgets and approval policy (PLAN.md 4.9's Settings page, and Phase 5's
+   * "hard stops" - @katnor/agents' runExecutor.ts is the actual enforcement,
+   * this is just what lets the owner configure the numbers it enforces).
+   * `default_model` isn't exposed here yet - nothing edits it outside the
+   * seed script today.
+   */
+  getCompanySettings: publicProcedure.query(() => companyRepo.getSettings()),
+
+  updateBudgets: protectedProcedure
+    .input(
+      z.object({
+        company_daily_usd: z.number().nonnegative(),
+        project_daily_usd: z.number().nonnegative().optional(),
+        agent_daily_usd: z.number().nonnegative().optional(),
+      }),
+    )
+    .mutation(({ input }) => companyRepo.updateSettings({ budgets: input })),
+
+  updateApprovalPolicy: protectedProcedure
+    .input(
+      z.object({
+        hire: approvalModeSchema,
+        tool_call: approvalModeSchema,
+        spend: approvalModeSchema,
+      }),
+    )
+    .mutation(({ input }) => companyRepo.updateSettings({ approval_policy: input })),
 });

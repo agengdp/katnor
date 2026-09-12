@@ -1,6 +1,7 @@
 import type { ContentBlock, ProviderMessage } from '@katnor/llm';
 import { getProvider } from '@katnor/llm';
-import type { RunStatus, RunStepKind } from '@katnor/core';
+import type { CompanySettings, RunStatus, RunStepKind } from '@katnor/core';
+import { mergeCompanySettings } from '@katnor/core';
 import { agentRepo, companyRepo, eventRepo, messageRepo, projectRepo, runRepo, runStepRepo, taskRepo } from '@katnor/db';
 import type PgBoss from 'pg-boss';
 import type { AgentToolContext } from './context.js';
@@ -67,6 +68,62 @@ async function recordStep(
   });
 }
 
+function startOfToday(): Date {
+  const date = new Date();
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
+
+/**
+ * PLAN.md Phase 5's "hard stops": refuses to start a run whose company,
+ * project, or agent has already reached its daily USD budget. A budget of
+ * 0 - the default for a fresh agent, and for project/agent budgets left
+ * unset in Settings - means "no cap", not "cap at $0"; only a positive
+ * number is ever enforced. Checked once, right before a run starts, so a
+ * blocked run never actually transitions to `running` (see its one call
+ * site's comment).
+ *
+ * This is deliberately a simple, unconditional cutoff, not an
+ * approval-gated "ask before going over" flow - `company.settings
+ * .approval_policy.spend` (configurable in Settings) isn't consulted here
+ * yet. Wiring that in - pausing and asking the owner instead of refusing
+ * outright when the policy isn't "auto" - is a natural extension of this
+ * same check, not something this pass implements.
+ */
+async function checkBudgetHardStop(
+  agent: NonNullable<Awaited<ReturnType<typeof agentRepo.getById>>>,
+  project: NonNullable<Awaited<ReturnType<typeof projectRepo.getById>>> | null,
+  settings: CompanySettings,
+): Promise<string | null> {
+  const since = startOfToday();
+
+  const companyCap = settings.budgets.company_daily_usd;
+  if (companyCap > 0) {
+    const spent = await runRepo.sumCostSince(since);
+    if (spent >= companyCap) {
+      return `Blocked by budget: the company has already spent $${spent.toFixed(2)} today, at or over its $${companyCap.toFixed(2)}/day budget.`;
+    }
+  }
+
+  const agentCap = Number(agent.budget_daily_usd) > 0 ? Number(agent.budget_daily_usd) : (settings.budgets.agent_daily_usd ?? 0);
+  if (agentCap > 0) {
+    const spent = await runRepo.sumCostSince(since, { agentId: agent.id });
+    if (spent >= agentCap) {
+      return `Blocked by budget: ${agent.name} has already spent $${spent.toFixed(2)} today, at or over their $${agentCap.toFixed(2)}/day budget.`;
+    }
+  }
+
+  const projectCap = settings.budgets.project_daily_usd ?? 0;
+  if (project && projectCap > 0) {
+    const spent = await runRepo.sumCostSince(since, { projectId: project.id });
+    if (spent >= projectCap) {
+      return `Blocked by budget: project "${project.name}" has already spent $${spent.toFixed(2)} today, at or over its $${projectCap.toFixed(2)}/day budget.`;
+    }
+  }
+
+  return null;
+}
+
 /**
  * Runs one agent's turn through the LLM tool-use loop for `runId` (created
  * `queued` by ./trigger.ts's `triggerRun`, called from apps/worker's
@@ -104,19 +161,33 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     return;
   }
 
+  const [task, company] = await Promise.all([
+    run.task_id ? taskRepo.getById(run.task_id) : Promise.resolve(undefined),
+    companyRepo.get(),
+  ]);
+  const project = task?.project_id ? ((await projectRepo.getById(task.project_id)) ?? null) : null;
+  const settings = mergeCompanySettings(company.settings);
+
+  const budgetBlockReason = await checkBudgetHardStop(agent, project, settings);
+  if (budgetBlockReason) {
+    await runRepo.update(runId, { status: 'cancelled', finished_at: new Date(), summary: budgetBlockReason });
+    await eventRepo.append({
+      type: 'run.finished',
+      payload: { run_id: runId, agent_id: agent.id, status: 'cancelled', cost_usd: 0 },
+    });
+    return;
+  }
+
   await runRepo.update(runId, { status: 'running' });
   await eventRepo.append({
     type: 'run.started',
     payload: { run_id: runId, agent_id: agent.id, task_id: run.task_id, trigger: run.trigger },
   });
 
-  const [task, manager, company, recentMessages] = await Promise.all([
-    run.task_id ? taskRepo.getById(run.task_id) : Promise.resolve(undefined),
+  const [manager, recentMessages] = await Promise.all([
     agent.reports_to ? agentRepo.getById(agent.reports_to) : Promise.resolve(undefined),
-    companyRepo.get(),
     run.channel_id ? messageRepo.list(run.channel_id) : Promise.resolve([]),
   ]);
-  const project = task?.project_id ? ((await projectRepo.getById(task.project_id)) ?? null) : null;
 
   const promptInput = {
     companyName: company.name,
