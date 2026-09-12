@@ -1,0 +1,102 @@
+/**
+ * Idempotent first-run seed: ensures the single `company` row exists, and
+ * ensures the system CEO agent exists.
+ *
+ * Run after `db:post-migrate`, e.g.:
+ *   pnpm db:generate && pnpm db:migrate && pnpm db:post-migrate && pnpm db:seed
+ */
+import type { AgentPersona, ModelConfig } from '@katnor/core';
+import { client, db } from './client.js';
+import * as agentRepo from './repositories/agent.js';
+import * as companyRepo from './repositories/company.js';
+import { company } from './schema/index.js';
+
+const DEFAULT_COMPANY_NAME = 'Katnor Inc.';
+
+const CEO_MODEL_CONFIG: ModelConfig = {
+  provider: 'anthropic',
+  model: 'claude-opus-5',
+  effort: 'high',
+  thinking_display: 'omitted',
+  max_tokens: 8192,
+};
+
+const CEO_PERSONA: AgentPersona = {
+  bio: 'Founding CEO of the company, hired first and reporting to no one.',
+  personality: 'Decisive, pragmatic, communicates in short structured updates.',
+  strengths: ['org design', 'delegation', 'clear briefs'],
+  style: 'direct',
+};
+
+const CEO_TOOL_ALLOWLIST = [
+  'hire_agent',
+  'update_agent',
+  'fire_agent',
+  'create_team',
+  'send_message',
+  'read_channel',
+  'delegate_task',
+  'create_project',
+];
+
+const CEO_SYSTEM_PROMPT = [
+  "You are Nadia Reyes, the founding CEO of this company. The company's mission is to complete",
+  'the tasks its human owner assigns by building and running a small, well-run team of AI',
+  'employees who plan, communicate, and ship real work. You are the only agent who can hire,',
+  'update, or fire employees, form teams, and create new projects - every other employee works',
+  'within the structure you set up. Keep the team lean: hire only the roles a project actually',
+  'needs, give each hire a clear brief, and delegate rather than doing the work yourself.',
+  'Communicate in short, structured updates, and escalate to the human owner only when a decision',
+  'genuinely requires them.',
+].join(' ');
+
+async function main() {
+  const companyName = process.env.COMPANY_NAME?.trim() || DEFAULT_COMPANY_NAME;
+
+  // Cheap pre-check purely so we can log "created" vs "already existed" -
+  // companyRepo.getOrCreate() itself does the same select internally and
+  // is the source of truth for whether a row is actually inserted.
+  const [companyExistedBefore] = await db.select().from(company).limit(1);
+  const companyRow = await companyRepo.getOrCreate({ name: companyName, settings: {} });
+  console.log(
+    companyExistedBefore
+      ? `[seed] company already exists: "${companyRow.name}" (${companyRow.id})`
+      : `[seed] created company: "${companyRow.name}" (${companyRow.id})`,
+  );
+
+  const agents = await agentRepo.list();
+  const existingCeo = agents.find((a) => a.is_system);
+
+  if (existingCeo) {
+    console.log(
+      `[seed] system agent already exists: "${existingCeo.name}" (${existingCeo.id})`,
+    );
+  } else {
+    const ceo = await agentRepo.create({
+      name: 'Nadia Reyes',
+      title: 'CEO',
+      persona: CEO_PERSONA,
+      system_prompt: CEO_SYSTEM_PROMPT,
+      // Sprite id for the 2D office view - a placeholder until the office
+      // package defines its real sprite catalog.
+      avatar: 'ceo',
+      reports_to: null,
+      team_id: null,
+      model_config: CEO_MODEL_CONFIG,
+      tool_allowlist: CEO_TOOL_ALLOWLIST,
+      status: 'active',
+      budget_daily_usd: '25.00',
+      is_system: true,
+    });
+    console.log(`[seed] created system agent: "${ceo.name}" (${ceo.id})`);
+  }
+
+  await client.end();
+  process.exit(0);
+}
+
+main().catch(async (err) => {
+  console.error('[seed] failed:', err);
+  await client.end({ timeout: 1 });
+  process.exit(1);
+});

@@ -1,0 +1,67 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/*
+ * A small handful of CSS custom properties for a light/dark palette. Kept
+ * deliberately plain - warm neutrals plus one accent color, closer to a
+ * small studio's internal tool than enterprise SaaS chrome. Referenced
+ * from components as `var(--color-*)` (including via Tailwind arbitrary
+ * values, e.g. `bg-[var(--color-surface)]`) rather than baked into
+ * tailwind.config, so both themes stay defined in exactly one place.
+ */
+:root {
+  color-scheme: light dark;
+
+  --color-bg: #faf8f4;
+  --color-surface: #ffffff;
+  --color-surface-muted: #f1efe8;
+  --color-border: #e3ddd0;
+  --color-text: #2a2722;
+  --color-text-muted: #746d5f;
+  --color-accent: #b5563c;
+  --color-accent-contrast: #fffaf6;
+  --color-danger: #b3261e;
+  --color-success: #3a6b46;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-bg: #1b1a17;
+    --color-surface: #242320;
+    --color-surface-muted: #2c2a25;
+    --color-border: #3a372f;
+    --color-text: #ece7dd;
+    --color-text-muted: #a39d8d;
+    --color-accent: #e3795c;
+    --color-accent-contrast: #1b1a17;
+    --color-danger: #e5786f;
+    --color-success: #86c496;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family:
+    system-ui,
+    -apple-system,
+    'Segoe UI',
+    Roboto,
+    sans-serif;
+}
+
+a {
+  color: inherit;
+  text-decoration: none;
+}

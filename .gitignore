@@ -1,0 +1,22 @@
+# Dependencies
+node_modules
+
+# Build output
+dist
+build
+.turbo
+.svelte-kit
+
+# Env files
+.env
+.env.local
+*.log
+
+# OS
+.DS_Store
+
+# Test coverage
+coverage
+
+# NOTE: drizzle/*.sql migration files are intentionally NOT ignored here -
+# migrations must be committed to the repo.
