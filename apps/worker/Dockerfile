@@ -47,6 +47,13 @@ FROM node:22-slim AS runner
 ENV NODE_ENV=production
 WORKDIR /repo
 
+# git is needed at runtime, not build time: @katnor/knowledge's wikiStorage.ts
+# shells out to `git init`/`add`/`commit` directly (not through a per-project
+# sandbox container - the wiki lives on this process's own filesystem, see
+# docker-compose.yml's `wiki-data` volume), which node:22-slim doesn't
+# include by default.
+RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /var/lib/apt/lists/*
+
 # pnpm hoists workspace packages (e.g. @katnor/core, @katnor/db) into
 # node_modules as symlinks back into packages/*, so - until turbo prune
 # trims this down - the runtime image needs the same repo layout as the

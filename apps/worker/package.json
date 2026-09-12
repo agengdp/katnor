@@ -11,6 +11,8 @@
   },
   "dependencies": {
     "@katnor/agents": "workspace:*",
+    "@katnor/db": "workspace:*",
+    "@katnor/knowledge": "workspace:*",
     "pg-boss": "^10.1.0",
     "zod": "^3.24.0"
   },

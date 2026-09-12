@@ -1,11 +1,18 @@
 import { createBossClient, QUEUES } from '@katnor/agents';
 import { createAgentRunHandler } from './handlers/agentRun.js';
+import { codeIndex } from './handlers/codeIndex.js';
 import { librarianIngest } from './handlers/librarianIngest.js';
+import { createWikiLintHandler } from './handlers/wikiLint.js';
 import { env } from './env.js';
 
 async function main(): Promise<void> {
   const boss = createBossClient();
-  const handlers = { agentRun: createAgentRunHandler(boss), librarianIngest };
+  const handlers = {
+    agentRun: createAgentRunHandler(boss),
+    librarianIngest,
+    wikiLint: createWikiLintHandler(boss),
+    codeIndex,
+  };
 
   // pg-boss is an EventEmitter; Node throws if an 'error' event has no
   // listener, so this must be attached before start().
@@ -17,15 +24,16 @@ async function main(): Promise<void> {
 
   // Queues are first-class in pg-boss and must exist before send()/work()
   // will operate on them. createQueue is idempotent, so it's safe to call
-  // on every boot, including WIKI_LINT even though no handler is registered
-  // for it yet - that keeps the topic ready for whichever Phase 3 job sends
-  // to it first.
+  // on every boot.
   await boss.createQueue(QUEUES.AGENT_RUN);
   await boss.createQueue(QUEUES.LIBRARIAN_INGEST);
   await boss.createQueue(QUEUES.WIKI_LINT);
+  await boss.createQueue(QUEUES.CODE_INDEX);
 
   await boss.work(QUEUES.AGENT_RUN, handlers.agentRun);
   await boss.work(QUEUES.LIBRARIAN_INGEST, handlers.librarianIngest);
+  await boss.work(QUEUES.WIKI_LINT, handlers.wikiLint);
+  await boss.work(QUEUES.CODE_INDEX, handlers.codeIndex);
 
   // @katnor/llm's Anthropic adapter (used by the agent-run handler above)
   // reads ANTHROPIC_API_KEY directly via the SDK's own default credential
