@@ -13,7 +13,7 @@ import type { ModelEffort, ModelProvider, ThinkingDisplayMode } from '@katnor/co
  * see src/anthropic.ts's module comment for the fuller rationale.
  */
 
-export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock;
+export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock | ServerToolBlock;
 
 export interface TextBlock {
   type: 'text';
@@ -53,6 +53,23 @@ export interface ToolResultBlock {
   isError?: boolean;
 }
 
+/**
+ * A block belonging to a server-side tool (Anthropic's `web_search`/
+ * `web_fetch` - PLAN.md 4.3) - Anthropic issues the call *and* executes it
+ * within the same API turn, so unlike `ToolUseBlock`/`ToolResultBlock`
+ * there is nothing for @katnor/agents' run executor to dispatch through
+ * the tool registry; the executor never sees `stopReason: 'tool_use'` on
+ * their account. This carries the block through opaquely (`raw`, whatever
+ * shape the provider actually used) purely so it can be echoed back
+ * unchanged when replaying assistant history on a later `step()` call -
+ * the same reason `ThinkingBlock` carries a `signature`. Other providers
+ * simply won't produce or need to replay this block type.
+ */
+export interface ServerToolBlock {
+  type: 'server_tool';
+  raw: unknown;
+}
+
 export type ProviderRole = 'user' | 'assistant';
 
 export interface ProviderMessage {
@@ -65,6 +82,19 @@ export interface ProviderTool {
   description: string;
   /** A JSON Schema object (not a zod schema - kept provider-agnostic and dependency-free to build). */
   inputSchema: Record<string, unknown>;
+  /**
+   * Set only for a server-side tool (PLAN.md 4.3: `web_search`/`web_fetch`
+   * "when the model is Claude"). A generic capability tag, NOT a raw
+   * provider type string - the exact wire `type` (e.g. Anthropic's
+   * `"web_search_20260209"` vs. the older `"web_search_20250305"`) can
+   * depend on which model this request targets, which only the provider
+   * adapter knows at request-build time (see @katnor/llm/src/anthropic.ts's
+   * `resolveModelProfile`). When set, `description`/`inputSchema` are
+   * ignored - the adapter declares the tool by this tag + `name` alone. A
+   * provider that doesn't support a given tag should skip it (drop it from
+   * the request) rather than error.
+   */
+  serverType?: 'web_search' | 'web_fetch';
 }
 
 export interface StepInput {

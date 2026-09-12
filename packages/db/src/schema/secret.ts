@@ -6,7 +6,7 @@ import { baseColumns } from './columns.js';
  * `tool_config.env_secret_refs` (e.g. an MCP server that needs a
  * GITHUB_TOKEN in its environment). `value_encrypted` uses the same
  * AES-256-GCM format as `provider_config.api_key_encrypted` - see
- * apps/server/src/crypto.ts, the only place that encrypts/decrypts either.
+ * ../crypto.ts, the only place that encrypts/decrypts either.
  */
 export const secret = pgTable(
   'secret',

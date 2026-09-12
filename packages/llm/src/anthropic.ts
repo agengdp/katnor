@@ -77,6 +77,14 @@ interface ModelProfile {
    */
   useFallbackDefault: boolean;
   maxContextTokens: number;
+  /**
+   * Which web_search/web_fetch tool generation this model supports (Claude
+   * API skill's Server Tools table): "dynamic" is the newer
+   * `_20260209` type with built-in filtering (Opus 5/4.8/4.7/4.6, Sonnet
+   * 5, Sonnet 4.6, Fable/Mythos); "basic" is the older `_20250305`/
+   * `_20250910` type for everything else (Haiku 4.5, unrecognized models).
+   */
+  webToolGeneration: 'dynamic' | 'basic';
 }
 
 /**
@@ -97,6 +105,7 @@ function resolveModelProfile(model: string): ModelProfile {
       supportsTaskBudget: true,
       useFallbackDefault: true,
       maxContextTokens: 1_000_000,
+      webToolGeneration: 'dynamic',
     };
   }
   if (model === 'claude-opus-5') {
@@ -106,6 +115,7 @@ function resolveModelProfile(model: string): ModelProfile {
       supportsTaskBudget: true,
       useFallbackDefault: true,
       maxContextTokens: 1_000_000,
+      webToolGeneration: 'dynamic',
     };
   }
   if (model === 'claude-sonnet-5' || model === 'claude-opus-4-8' || model === 'claude-opus-4-7') {
@@ -115,6 +125,7 @@ function resolveModelProfile(model: string): ModelProfile {
       supportsTaskBudget: true,
       useFallbackDefault: false,
       maxContextTokens: 1_000_000,
+      webToolGeneration: 'dynamic',
     };
   }
   if (model === 'claude-opus-4-6' || model === 'claude-sonnet-4-6') {
@@ -124,6 +135,7 @@ function resolveModelProfile(model: string): ModelProfile {
       supportsTaskBudget: false,
       useFallbackDefault: false,
       maxContextTokens: 1_000_000,
+      webToolGeneration: 'dynamic',
     };
   }
   // claude-haiku-4-5 and anything else unrecognized: no adaptive thinking
@@ -136,6 +148,7 @@ function resolveModelProfile(model: string): ModelProfile {
     supportsTaskBudget: false,
     useFallbackDefault: false,
     maxContextTokens: 200_000,
+    webToolGeneration: 'basic',
   };
 }
 
@@ -145,12 +158,34 @@ const THINKING_UPDATES_BETA = 'thinking-display-updates-2026-08-18';
 /** Anthropic requires a task budget of at least this many tokens. */
 const MIN_TASK_BUDGET_TOKENS = 20_000;
 
-function toAnthropicTools(tools: ProviderTool[]): Anthropic.Beta.BetaToolUnion[] {
-  return tools.map((tool) => ({
-    name: tool.name,
-    description: tool.description,
-    input_schema: tool.inputSchema as Anthropic.Beta.BetaTool.InputSchema,
-  }));
+/** The concrete Anthropic tool `type` string for a `ProviderTool.serverType` tag, per model generation. */
+function resolveServerToolType(tag: 'web_search' | 'web_fetch', generation: ModelProfile['webToolGeneration']): string {
+  if (tag === 'web_search') {
+    return generation === 'dynamic' ? 'web_search_20260209' : 'web_search_20250305';
+  }
+  // web_fetch has no "basic" fallback in the skill's table for Vertex, but
+  // this adapter only ever talks to the first-party API, where
+  // web_fetch_20250910 is the documented pre-dynamic-filtering type.
+  return generation === 'dynamic' ? 'web_fetch_20260209' : 'web_fetch_20250910';
+}
+
+function toAnthropicTools(tools: ProviderTool[], profile: ModelProfile): Anthropic.Beta.BetaToolUnion[] {
+  return tools.map((tool) => {
+    // A server-side tool (web_search/web_fetch - PLAN.md 4.3) is declared
+    // by type+name alone; Anthropic supplies the real schema, so
+    // description/inputSchema are ignored for these.
+    if (tool.serverType) {
+      return {
+        type: resolveServerToolType(tool.serverType, profile.webToolGeneration),
+        name: tool.name,
+      } as Anthropic.Beta.BetaToolUnion;
+    }
+    return {
+      name: tool.name,
+      description: tool.description,
+      input_schema: tool.inputSchema as Anthropic.Beta.BetaTool.InputSchema,
+    };
+  });
 }
 
 /**
@@ -182,6 +217,10 @@ function toAnthropicMessage(message: ProviderMessage): Anthropic.Beta.BetaMessag
           content: block.content,
           is_error: block.isError,
         };
+      case 'server_tool':
+        // Echoed back exactly as Anthropic returned it - see ./types.ts's
+        // ServerToolBlock doc comment.
+        return block.raw as Anthropic.Beta.BetaContentBlockParam;
       default: {
         const exhaustive: never = block;
         throw new Error(`toAnthropicMessage: unhandled content block ${JSON.stringify(exhaustive)}`);
@@ -208,10 +247,21 @@ function fromAnthropicContent(blocks: Anthropic.Beta.BetaContentBlock[]): Conten
         name: block.name,
         input: block.input as Record<string, unknown>,
       });
+    } else if (
+      block.type === 'server_tool_use' ||
+      block.type === 'web_search_tool_result' ||
+      block.type === 'web_fetch_tool_result'
+    ) {
+      // Anthropic issued *and executed* this within the same turn (PLAN.md
+      // 4.3's web_search/web_fetch) - nothing for the run executor's tool
+      // registry to dispatch. Carried through opaquely so it can be
+      // echoed back verbatim on a later `step()` call - see
+      // ServerToolBlock's doc comment in ./types.ts.
+      result.push({ type: 'server_tool', raw: block });
     }
-    // Other block types (redacted_thinking, server_tool_use, citations,
-    // fallback markers, ...) aren't part of this system's tool-calling loop
-    // yet and are intentionally dropped rather than guessed at.
+    // Other block types (redacted_thinking, citations, fallback markers,
+    // ...) aren't part of this system's tool-calling loop yet and are
+    // intentionally dropped rather than guessed at.
   }
   return result;
 }
@@ -304,7 +354,7 @@ export class AnthropicProvider implements LLMProvider {
       model: input.model,
       max_tokens: input.maxTokens,
       system: [{ type: 'text' as const, text: input.systemPrompt, cache_control: { type: 'ephemeral' as const } }],
-      tools: toAnthropicTools(input.tools),
+      tools: toAnthropicTools(input.tools, profile),
       tool_choice: { type: 'auto' as const },
       messages: input.messages.map(toAnthropicMessage),
       ...(thinking ? { thinking } : {}),
