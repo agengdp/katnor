@@ -23,3 +23,6 @@ export * as approvalRepo from './repositories/approval.js';
 export * as artifactRepo from './repositories/artifact.js';
 export * as toolConfigRepo from './repositories/toolConfig.js';
 export * as secretRepo from './repositories/secret.js';
+export * as kgNodeRepo from './repositories/kgNode.js';
+export * as kgEdgeRepo from './repositories/kgEdge.js';
+export * as wikiPageRepo from './repositories/wikiPage.js';
