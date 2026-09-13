@@ -13,6 +13,7 @@ import { settingsRouter } from './routers/settings.js';
 import { tasksRouter } from './routers/tasks.js';
 import { teamsRouter } from './routers/teams.js';
 import { toolConfigsRouter } from './routers/toolConfigs.js';
+import { usersRouter } from './routers/users.js';
 import { router } from './trpc.js';
 
 // No `superjson` (or other) transformer is configured: it isn't in this
@@ -36,6 +37,7 @@ export const appRouter = router({
   toolConfigs: toolConfigsRouter,
   secrets: secretsRouter,
   knowledge: knowledgeRouter,
+  users: usersRouter,
 });
 
 /**

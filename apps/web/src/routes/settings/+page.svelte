@@ -359,6 +359,69 @@
       savingPolicy = false;
     }
   }
+
+  // ─── Team members (PLAN.md Phase 5's multi-user auth) ───────────────────
+
+  type UserRow = { id: string; name: string; email: string; created_at: string };
+
+  let users = $state<UserRow[]>([]);
+  let usersLoading = $state(true);
+  let usersError = $state<string | null>(null);
+
+  let newUserName = $state('');
+  let newUserEmail = $state('');
+  let newUserPassword = $state('');
+  let addingUser = $state(false);
+  let addUserError = $state<string | null>(null);
+
+  let removingIds = $state<Record<string, boolean>>({});
+
+  async function loadUsers() {
+    usersLoading = true;
+    usersError = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      users = (await trpc().users.list.query()) as any as UserRow[];
+    } catch (err) {
+      usersError = describeError(err);
+    } finally {
+      usersLoading = false;
+    }
+  }
+
+  $effect(() => {
+    loadUsers();
+  });
+
+  async function addUser(event: SubmitEvent) {
+    event.preventDefault();
+    addingUser = true;
+    addUserError = null;
+    try {
+      await trpc().users.create.mutate({ name: newUserName.trim(), email: newUserEmail.trim(), password: newUserPassword });
+      newUserName = '';
+      newUserEmail = '';
+      newUserPassword = '';
+      await loadUsers();
+    } catch (err) {
+      addUserError = describeError(err);
+    } finally {
+      addingUser = false;
+    }
+  }
+
+  async function removeUser(id: string) {
+    removingIds[id] = true;
+    usersError = null;
+    try {
+      await trpc().users.remove.mutate({ id });
+      await loadUsers();
+    } catch (err) {
+      usersError = describeError(err);
+    } finally {
+      removingIds[id] = false;
+    }
+  }
 </script>
 
 <div class="mx-auto flex max-w-3xl flex-col gap-6">
@@ -780,5 +843,102 @@
         Download backup
       </a>
     </div>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold">Team members</h2>
+      <button
+        type="button"
+        class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+        onclick={loadUsers}
+        disabled={usersLoading}
+      >
+        {usersLoading ? 'Loading…' : 'Reload'}
+      </button>
+    </div>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Anyone who can log in has the same access - there's no owner/member distinction (PLAN.md's
+      Phase 5 multi-user auth). There's no self-serve signup: add a teammate here with a password
+      they can change later; removing the last remaining account is blocked so nobody gets locked
+      out.
+    </p>
+
+    {#if usersError}
+      <p class="text-sm text-[var(--color-danger)]">{usersError}</p>
+    {/if}
+
+    <div class="flex flex-col gap-2">
+      {#each users as row (row.id)}
+        <div class="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <div class="flex flex-col">
+            <span class="text-sm font-medium">{row.name}</span>
+            <span class="text-xs text-[var(--color-text-muted)]">{row.email}</span>
+          </div>
+          <button
+            type="button"
+            onclick={() => removeUser(row.id)}
+            disabled={removingIds[row.id] || users.length <= 1}
+            title={users.length <= 1 ? "Can't remove the last remaining account" : 'Remove this teammate'}
+            class="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+          >
+            {removingIds[row.id] ? 'Removing…' : 'Remove'}
+          </button>
+        </div>
+      {/each}
+      {#if !usersLoading && users.length === 0}
+        <p class="text-sm text-[var(--color-text-muted)]">No accounts yet.</p>
+      {/if}
+    </div>
+
+    <form
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      onsubmit={addUser}
+    >
+      <h3 class="text-sm font-semibold">Add a teammate</h3>
+      <div class="grid gap-3 sm:grid-cols-3">
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Name</span>
+          <input
+            type="text"
+            required
+            bind:value={newUserName}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Email</span>
+          <input
+            type="email"
+            required
+            bind:value={newUserEmail}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Password</span>
+          <input
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="8"
+            bind:value={newUserPassword}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+      </div>
+      {#if addUserError}
+        <p class="text-sm text-[var(--color-danger)]">{addUserError}</p>
+      {/if}
+      <div>
+        <button
+          type="submit"
+          disabled={addingUser}
+          class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {addingUser ? 'Adding…' : 'Add teammate'}
+        </button>
+      </div>
+    </form>
   </section>
 </div>

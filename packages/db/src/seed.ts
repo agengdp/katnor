@@ -1,6 +1,8 @@
 /**
- * Idempotent first-run seed: ensures the single `company` row exists, and
- * ensures the system CEO agent exists.
+ * Idempotent first-run seed: ensures the single `company` row exists,
+ * ensures the system CEO agent exists, and (Phase 5's multi-user auth)
+ * bootstraps the first login-able user account from `OWNER_EMAIL`/
+ * `OWNER_PASSWORD_HASH` if no user exists yet.
  *
  * Run after `db:post-migrate`, e.g.:
  *   pnpm db:generate && pnpm db:migrate && pnpm db:post-migrate && pnpm db:seed
@@ -11,6 +13,7 @@ import { client, db } from './client.js';
 import * as agentRepo from './repositories/agent.js';
 import * as channelRepo from './repositories/channel.js';
 import * as companyRepo from './repositories/company.js';
+import * as userRepo from './repositories/user.js';
 import { company } from './schema/index.js';
 
 const DEFAULT_COMPANY_NAME = 'Katnor Inc.';
@@ -106,6 +109,35 @@ async function main() {
 
   const generalChannel = await channelRepo.getOrCreateGeneral();
   console.log(`[seed] #general channel ready: (${generalChannel.id})`);
+
+  // Phase 5's "no self-serve signup" multi-user auth: the very first user
+  // account can only come from here (a chicken-and-egg problem otherwise -
+  // creating one via the dashboard requires already being logged in as
+  // one). Every user after that is created by an already-logged-in user
+  // through Settings > Team members (apps/server's `users.create`).
+  const existingUsers = await userRepo.list();
+  if (existingUsers.length > 0) {
+    console.log(
+      `[seed] ${existingUsers.length} user account(s) already exist - skipping owner bootstrap.`,
+    );
+  } else {
+    const ownerEmail = process.env.OWNER_EMAIL?.trim();
+    const ownerPasswordHash = process.env.OWNER_PASSWORD_HASH?.trim();
+    if (ownerEmail && ownerPasswordHash) {
+      const owner = await userRepo.createWithPasswordHash({
+        name: 'Owner',
+        email: ownerEmail,
+        passwordHash: ownerPasswordHash,
+      });
+      console.log(`[seed] created first user account: ${owner.email} (${owner.id})`);
+    } else {
+      console.warn(
+        '[seed] OWNER_EMAIL and/or OWNER_PASSWORD_HASH are not set - no user account created. ' +
+          'Nobody can log in until one exists: set both in .env and re-run db:seed. ' +
+          'See .env.example.',
+      );
+    }
+  }
 
   await client.end();
   process.exit(0);

@@ -9,14 +9,17 @@ the source of truth for how every entity in the domain model is stored.
 pnpm db:generate      # drizzle-kit reads src/schema and writes SQL migrations to ./drizzle
 pnpm db:migrate       # drizzle-kit applies ./drizzle/*.sql to DATABASE_URL
 pnpm db:post-migrate  # tsx src/applyPostMigrate.ts - enables pgvector, installs the event-notify trigger
-pnpm db:seed          # tsx src/seed.ts - creates the company row and the system CEO agent
+pnpm db:seed          # tsx src/seed.ts - creates the company row, the system CEO agent, and the first user
 ```
 
 Run them in that order, every time the schema changes. All four are idempotent - safe to re-run.
 
 `DATABASE_URL` must be set (see the repo root `.env.example`; local dev via `docker-compose.yml`
 defaults to `postgresql://katnor:katnor@localhost:5432/katnor`). `COMPANY_NAME` is optional and only
-used by `db:seed` (defaults to `"Katnor Inc."`).
+used by `db:seed` (defaults to `"Katnor Inc."`). `OWNER_EMAIL`/`OWNER_PASSWORD_HASH` are also only
+read by `db:seed`, and only to create the very first `user` row if no user exists yet - nobody can log
+in until one does (Phase 5's multi-user auth has no self-serve signup; every other user is created by
+an already-logged-in one through Settings > Team members).
 
 ### `db:generate` could not be run in this environment
 

@@ -7,10 +7,12 @@ import { z } from 'zod';
  * variables from the repo-root `.env` via `env_file:`) or locally with the
  * shell environment already populated.
  *
- * `OWNER_PASSWORD_HASH` is intentionally nullable: a fresh checkout has no
- * owner password set yet, and the app should still boot (with owner login
- * disabled, see the warning below) rather than crash, so the operator can
- * reach whatever bootstrap flow eventually sets it.
+ * `OWNER_EMAIL`/`OWNER_PASSWORD_HASH` (Phase 5's multi-user auth
+ * bootstrap) are deliberately NOT part of this schema: they're read only
+ * once, directly, by @katnor/db's src/seed.ts to create the very first
+ * `user` row - this running server process never reads them itself, since
+ * every login now goes through that table (src/auth.ts's `attemptLogin`),
+ * not an env var.
  */
 
 /** Treats an unset/blank env var the same as "not provided" for zod's `.optional()`. */
@@ -30,8 +32,6 @@ const envSchema = z.object({
     emptyToUndefined,
     z.string({ required_error: 'SETTINGS_ENCRYPTION_KEY is required' }).min(1),
   ),
-  // Nullable on purpose - see module comment above.
-  OWNER_PASSWORD_HASH: z.preprocess(emptyToUndefined, z.string().min(1).optional()),
   // Optional: the worker is the primary consumer of ANTHROPIC_API_KEY; the
   // server only needs it as a convenience default so Settings can show a
   // provider as already configured before the owner ever visits the UI.
@@ -57,10 +57,3 @@ function loadEnv() {
 }
 
 export const env = loadEnv();
-
-if (!env.OWNER_PASSWORD_HASH) {
-  console.warn(
-    '[env] OWNER_PASSWORD_HASH is not set - owner login is disabled until it is configured. ' +
-      'See .env.example for how to generate one.',
-  );
-}

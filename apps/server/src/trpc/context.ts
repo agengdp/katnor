@@ -6,6 +6,12 @@ import { readCookie, SESSION_COOKIE_NAME, verifySessionToken } from '../auth.js'
 
 export interface Session {
   authenticated: boolean;
+  /**
+   * The logged-in user's id, or `null` when `authenticated` is false. Set
+   * together - never `authenticated: true` with a `null` userId or vice
+   * versa.
+   */
+  userId: string | null;
 }
 
 export interface Context {
@@ -36,6 +42,6 @@ export interface Context {
  */
 export function createContext({ req, resHeaders }: FetchCreateContextFnOptions): Context {
   const token = readCookie(req.headers.get('cookie'), SESSION_COOKIE_NAME);
-  const authenticated = verifySessionToken(token);
-  return { db, boss, session: { authenticated }, resHeaders };
+  const userId = verifySessionToken(token);
+  return { db, boss, session: { authenticated: userId !== null, userId }, resHeaders };
 }

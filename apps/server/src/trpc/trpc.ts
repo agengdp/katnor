@@ -16,13 +16,15 @@ export const publicProcedure = t.procedure;
 
 /**
  * A procedure that 401s (as a `TRPCError`) unless the request carried a
- * valid `katnor_session` cookie. Used by every settings.* procedure - the
- * owner must be logged in to read or change provider configuration.
+ * valid `katnor_session` cookie. Used by every settings.*/users.*
+ * procedure and most mutations elsewhere - some user must be logged in to
+ * read or change things (PLAN.md Phase 5's multi-user auth - any logged-in
+ * user, not a distinct "owner" role; see @katnor/core's schemas/user.ts).
  */
 export const protectedProcedure = publicProcedure.use(
   middleware(({ ctx, next }) => {
     if (!ctx.session.authenticated) {
-      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Owner login required' });
+      throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Login required' });
     }
     return next({ ctx });
   }),

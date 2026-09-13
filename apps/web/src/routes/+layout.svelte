@@ -8,15 +8,18 @@
   let { children } = $props();
 
   let authenticated = $state<boolean | null>(null); // null = not checked yet
+  let currentUserName = $state<string | null>(null);
 
   async function refreshAuth() {
     try {
       const result = await trpc().auth.me.query();
       authenticated = result.authenticated;
+      currentUserName = result.user?.name ?? null;
     } catch {
       // apps/server may not be reachable yet - reads elsewhere already
       // surface their own errors, so this just leaves the auth chip quiet.
       authenticated = null;
+      currentUserName = null;
     }
   }
 
@@ -54,6 +57,7 @@
   async function logout() {
     await trpc().auth.logout.mutate();
     authenticated = false;
+    currentUserName = null;
     await goto('/');
   }
 
@@ -99,13 +103,18 @@
     </div>
 
     {#if authenticated}
-      <button
-        type="button"
-        onclick={logout}
-        class="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
-      >
-        Log out
-      </button>
+      <div class="flex shrink-0 items-center gap-2">
+        {#if currentUserName}
+          <span class="hidden text-xs text-[var(--color-text-muted)] sm:inline">{currentUserName}</span>
+        {/if}
+        <button
+          type="button"
+          onclick={logout}
+          class="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+        >
+          Log out
+        </button>
+      </div>
     {:else}
       <a
         href="/login"
