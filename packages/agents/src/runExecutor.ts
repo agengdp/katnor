@@ -1,8 +1,18 @@
 import type { ContentBlock, ProviderMessage } from '@katnor/llm';
 import { getProvider } from '@katnor/llm';
-import type { CompanySettings, RunStatus, RunStepKind } from '@katnor/core';
+import type { ApprovalMode, CompanySettings, RunStatus, RunStepKind, SpendApprovalPayload } from '@katnor/core';
 import { mergeCompanySettings } from '@katnor/core';
-import { agentRepo, companyRepo, eventRepo, messageRepo, projectRepo, runRepo, runStepRepo, taskRepo } from '@katnor/db';
+import {
+  agentRepo,
+  approvalRepo,
+  companyRepo,
+  eventRepo,
+  messageRepo,
+  projectRepo,
+  runRepo,
+  runStepRepo,
+  taskRepo,
+} from '@katnor/db';
 import type PgBoss from 'pg-boss';
 import type { AgentToolContext } from './context.js';
 import { loadAgentMcpTools } from './mcpTools.js';
@@ -75,20 +85,25 @@ function startOfToday(): Date {
 }
 
 /**
- * PLAN.md Phase 5's "hard stops": refuses to start a run whose company,
- * project, or agent has already reached its daily USD budget. A budget of
- * 0 - the default for a fresh agent, and for project/agent budgets left
- * unset in Settings - means "no cap", not "cap at $0"; only a positive
- * number is ever enforced. Checked once, right before a run starts, so a
- * blocked run never actually transitions to `running` (see its one call
- * site's comment).
- *
- * This is deliberately a simple, unconditional cutoff, not an
- * approval-gated "ask before going over" flow - `company.settings
- * .approval_policy.spend` (configurable in Settings) isn't consulted here
- * yet. Wiring that in - pausing and asking the owner instead of refusing
- * outright when the policy isn't "auto" - is a natural extension of this
- * same check, not something this pass implements.
+ * What `checkBudgetHardStop` returns when a cap is hit - enough for its
+ * caller to build a `spend` approval or a plain cancellation summary.
+ */
+interface BudgetHit {
+  scope: SpendApprovalPayload['scope'];
+  summary: string;
+}
+
+/**
+ * PLAN.md Phase 5's "hard stops": flags a run whose company, project, or
+ * agent has already reached its daily USD budget. A budget of 0 - the
+ * default for a fresh agent, and for project/agent budgets left unset in
+ * Settings - means "no cap", not "cap at $0"; only a positive number is
+ * ever enforced. Checked once, right before a run starts, so a blocked run
+ * never actually transitions to `running` (see its one call site's
+ * comment) - whether that means the run is cancelled outright or paused
+ * to ask the owner is `company.settings.approval_policy.spend`'s call, not
+ * this function's; see `isSpendPreapproved` and the call site below for
+ * that half of the logic.
  *
  * Two gaps this check does NOT cover, surfaced by a Phase 5 cross-review
  * rather than something either commit's own comment called out on its
@@ -108,14 +123,19 @@ async function checkBudgetHardStop(
   agent: NonNullable<Awaited<ReturnType<typeof agentRepo.getById>>>,
   project: NonNullable<Awaited<ReturnType<typeof projectRepo.getById>>> | null,
   settings: CompanySettings,
-): Promise<string | null> {
+): Promise<BudgetHit | null> {
   const since = startOfToday();
 
   const companyCap = settings.budgets.company_daily_usd;
   if (companyCap > 0) {
     const spent = await runRepo.sumCostSince(since);
     if (spent >= companyCap) {
-      return `Blocked by budget: the company has already spent $${spent.toFixed(2)} today, at or over its $${companyCap.toFixed(2)}/day budget.`;
+      return {
+        scope: 'company',
+        summary:
+          `the company has already spent $${spent.toFixed(2)} today, at or over its ` +
+          `$${companyCap.toFixed(2)}/day budget`,
+      };
     }
   }
 
@@ -123,7 +143,12 @@ async function checkBudgetHardStop(
   if (agentCap > 0) {
     const spent = await runRepo.sumCostSince(since, { agentId: agent.id });
     if (spent >= agentCap) {
-      return `Blocked by budget: ${agent.name} has already spent $${spent.toFixed(2)} today, at or over their $${agentCap.toFixed(2)}/day budget.`;
+      return {
+        scope: 'agent',
+        summary:
+          `${agent.name} has already spent $${spent.toFixed(2)} today, at or over their ` +
+          `$${agentCap.toFixed(2)}/day budget`,
+      };
     }
   }
 
@@ -131,11 +156,41 @@ async function checkBudgetHardStop(
   if (project && projectCap > 0) {
     const spent = await runRepo.sumCostSince(since, { projectId: project.id });
     if (spent >= projectCap) {
-      return `Blocked by budget: project "${project.name}" has already spent $${spent.toFixed(2)} today, at or over its $${projectCap.toFixed(2)}/day budget.`;
+      return {
+        scope: 'project',
+        summary:
+          `project "${project.name}" has already spent $${spent.toFixed(2)} today, at or over ` +
+          `its $${projectCap.toFixed(2)}/day budget`,
+      };
     }
   }
 
   return null;
+}
+
+/**
+ * Whether a run blocked by `checkBudgetHardStop` should be let through
+ * anyway rather than paused to ask the owner - mirrors ./workTools.ts's
+ * `gateDangerousShellCommand` exactly (same three `ApprovalMode` values,
+ * same "ask once per project" convention): `"auto"` always lets it
+ * through; `"ask_once_per_project"` does too, but only once a prior
+ * *approved* `spend` approval already exists for this project (checked by
+ * `project_id` alone, not also `scope` - the point is "the owner has
+ * already said yes to this project running over budget," not "for this
+ * exact cap"); `"always_ask"`, or `"ask_once_per_project"` with no project
+ * to scope to, never pre-approves.
+ */
+async function isSpendPreapproved(policy: ApprovalMode, projectId: string | null): Promise<boolean> {
+  if (policy === 'auto') return true;
+  if (policy === 'ask_once_per_project' && projectId) {
+    const approved = await approvalRepo.list('approved');
+    return approved.some((row) => {
+      if (row.kind !== 'spend') return false;
+      const payload = row.payload as Partial<SpendApprovalPayload>;
+      return payload.project_id === projectId;
+    });
+  }
+  return false;
 }
 
 /**
@@ -182,14 +237,39 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
   const project = task?.project_id ? ((await projectRepo.getById(task.project_id)) ?? null) : null;
   const settings = mergeCompanySettings(company.settings);
 
-  const budgetBlockReason = await checkBudgetHardStop(agent, project, settings);
-  if (budgetBlockReason) {
-    await runRepo.update(runId, { status: 'cancelled', finished_at: new Date(), summary: budgetBlockReason });
-    await eventRepo.append({
-      type: 'run.finished',
-      payload: { run_id: runId, agent_id: agent.id, status: 'cancelled', cost_usd: 0 },
-    });
-    return;
+  const budgetHit = await checkBudgetHardStop(agent, project, settings);
+  if (budgetHit) {
+    const preapproved = await isSpendPreapproved(settings.approval_policy.spend, project?.id ?? null);
+    if (!preapproved) {
+      // "always_ask", or the first time this project has hit a cap under
+      // "ask_once_per_project" - pause and ask, the same shape as
+      // ./companyTools.ts's `ask_human`/./workTools.ts's dangerous-shell
+      // gate: a `spend` approval, the run parked as `waiting_human` rather
+      // than cancelled outright, woken up again (a fresh run, not a
+      // resumed one - see apps/server's approvals.decide) once the owner
+      // decides either way.
+      const payload: SpendApprovalPayload = {
+        scope: budgetHit.scope,
+        agent_id: agent.id,
+        project_id: project?.id ?? null,
+        summary: budgetHit.summary,
+      };
+      const created = await approvalRepo.create({ run_id: runId, kind: 'spend', payload });
+      await eventRepo.append({ type: 'approval.requested', payload: { approval_id: created.id, kind: 'spend' } });
+      await runRepo.update(runId, {
+        status: 'waiting_human',
+        finished_at: new Date(),
+        summary: `Waiting on the owner (pending id ${created.id}): ${budgetHit.summary}.`,
+      });
+      await eventRepo.append({
+        type: 'run.finished',
+        payload: { run_id: runId, agent_id: agent.id, status: 'waiting_human', cost_usd: 0 },
+      });
+      return;
+    }
+    // "auto", or an already-approved "ask_once_per_project" match - the
+    // owner (or policy) has effectively said "let it run anyway", so fall
+    // through and start the run despite being over budget.
   }
 
   await runRepo.update(runId, { status: 'running' });

@@ -86,3 +86,22 @@ export const toolCallApprovalPayloadSchema = z.object({
   summary: z.string(),
 });
 export type ToolCallApprovalPayload = z.infer<typeof toolCallApprovalPayloadSchema>;
+
+/**
+ * The shape `approval.payload` takes for `kind: "spend"` - raised when
+ * @katnor/agents' runExecutor.ts's `checkBudgetHardStop` finds a run that
+ * would push the company, the agent, or the project over its daily USD
+ * budget, gated by `company.settings.approval_policy.spend` (PLAN.md
+ * Phase 5's budget hard stops). `scope` says which cap was hit; `project_id`
+ * is null when the run isn't scoped to a project - same
+ * `"ask_once_per_project"` convention as `toolCallApprovalPayloadSchema`
+ * above (checking for a prior *approved* `spend` approval with the same
+ * `project_id`, regardless of `scope`, before asking again).
+ */
+export const spendApprovalPayloadSchema = z.object({
+  scope: z.enum(['company', 'agent', 'project']),
+  agent_id: z.string(),
+  project_id: z.string().nullable(),
+  summary: z.string(),
+});
+export type SpendApprovalPayload = z.infer<typeof spendApprovalPayloadSchema>;

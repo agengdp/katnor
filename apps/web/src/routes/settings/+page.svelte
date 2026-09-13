@@ -654,9 +654,11 @@
       </button>
     </div>
     <p class="text-sm text-[var(--color-text-muted)]">
-      Daily budgets are hard stops (PLAN.md's Phase 5) - a run that would push the company or its own
-      agent over their daily budget is cancelled rather than started. Leave project/agent blank for no
-      per-project/per-agent cap beyond each agent's own budget (set per-agent on the Team page).
+      Daily budgets are hard stops (PLAN.md's Phase 5) - a run that would push the company, its own
+      agent, or its project over its daily budget doesn't start. What happens next follows the "Spend
+      beyond budget" policy below: paused and sent to your Inbox to approve or reject, or - only under
+      "Auto" - let through anyway. Leave project/agent blank for no per-project/per-agent cap beyond
+      each agent's own budget (set per-agent on the Team page).
     </p>
 
     {#if budgetsError}
