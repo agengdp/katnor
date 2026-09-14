@@ -1,5 +1,6 @@
 import type { ModelProvider } from '@katnor/core';
 import { decryptSecret, providerConfigRepo } from '@katnor/db';
+import { estimateCostFromRates, numericColumnToRate } from './pricing.js';
 import type {
   ContentBlock,
   LLMProvider,
@@ -69,14 +70,32 @@ type OpenAiCompatibleProviderId = Extract<ModelProvider, 'openai_compatible' | '
  * (an arbitrary third-party endpoint can't be guessed at) and passes none,
  * so a missing base URL there is a hard error instead.
  */
+interface ResolvedConfig {
+  baseUrl: string;
+  apiKey: string | undefined;
+  // Owner-entered $/MTok rates from Settings > Providers (null = unset) -
+  // see @katnor/db's schema/providerConfig.ts and ./pricing.ts's
+  // `estimateCostFromRates` for why this adapter has no built-in price
+  // table the way ./anthropic.ts does.
+  inputCostPerMtok: number | null;
+  outputCostPerMtok: number | null;
+}
+
 async function readConfig(
   provider: OpenAiCompatibleProviderId,
   defaultBaseUrl?: string,
-): Promise<{ baseUrl: string; apiKey: string | undefined } | { error: string }> {
+): Promise<ResolvedConfig | { error: string }> {
   try {
     const row = await providerConfigRepo.getByProvider(provider);
     if (!row) {
-      if (defaultBaseUrl) return { baseUrl: defaultBaseUrl, apiKey: undefined };
+      if (defaultBaseUrl) {
+        return {
+          baseUrl: defaultBaseUrl,
+          apiKey: undefined,
+          inputCostPerMtok: null,
+          outputCostPerMtok: null,
+        };
+      }
       return {
         error: `No "${provider}" provider is configured yet - add a base URL under Settings > Providers.`,
       };
@@ -95,6 +114,8 @@ async function readConfig(
       // Self-hosted servers (vLLM, Ollama, ...) commonly need no auth at all -
       // an unset key isn't an error here, unlike a missing base URL.
       apiKey: row.api_key_encrypted ? decryptSecret(row.api_key_encrypted) : undefined,
+      inputCostPerMtok: numericColumnToRate(row.input_cost_per_mtok),
+      outputCostPerMtok: numericColumnToRate(row.output_cost_per_mtok),
     };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
@@ -341,14 +362,14 @@ export class OpenAiCompatibleProvider implements LLMProvider {
         stopReason: toStopReason(choice.finish_reason),
         usage,
         // No generic price table exists for an arbitrary third-party/
-        // self-hosted endpoint the way ./pricing.ts has for Anthropic's
-        // own models - reported as $0 rather than guessed at, so
-        // budget/cost-dashboard numbers stay honest (spend on this
-        // provider is currently untracked, not "free"; a future phase
-        // could add a configurable $/MTok rate on `provider_config` per
-        // PLAN.md 4.7's cost tracking - moot for a genuinely free local
-        // Ollama model, but not for a paid "openai_compatible" endpoint).
-        costUsd: 0,
+        // self-hosted endpoint the way ./pricing.ts's hand-maintained
+        // table has for Anthropic's own models, so this falls back to the
+        // owner-entered flat rate on Settings > Providers (null/unset on
+        // either side -> $0 for that side, same honest "untracked, not
+        // free" default as before this rate existed - moot for a
+        // genuinely free local Ollama model, but not for a paid
+        // "openai_compatible" endpoint).
+        costUsd: estimateCostFromRates(config, usage),
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

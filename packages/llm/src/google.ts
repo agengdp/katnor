@@ -1,5 +1,6 @@
 import type { ModelProvider } from '@katnor/core';
 import { decryptSecret, providerConfigRepo } from '@katnor/db';
+import { estimateCostFromRates, numericColumnToRate } from './pricing.js';
 import type {
   ContentBlock,
   LLMProvider,
@@ -43,7 +44,18 @@ import type {
 const DEFAULT_BASE_URL = 'https://generativelanguage.googleapis.com';
 const API_VERSION = 'v1beta';
 
-async function readConfig(): Promise<{ baseUrl: string; apiKey: string } | { error: string }> {
+interface ResolvedConfig {
+  baseUrl: string;
+  apiKey: string;
+  // Owner-entered $/MTok rates from Settings > Providers (null = unset) -
+  // see @katnor/db's schema/providerConfig.ts and ./pricing.ts's
+  // `estimateCostFromRates` for why this adapter has no built-in price
+  // table the way ./anthropic.ts does.
+  inputCostPerMtok: number | null;
+  outputCostPerMtok: number | null;
+}
+
+async function readConfig(): Promise<ResolvedConfig | { error: string }> {
   try {
     const row = await providerConfigRepo.getByProvider('google');
     if (!row) {
@@ -58,7 +70,12 @@ async function readConfig(): Promise<{ baseUrl: string; apiKey: string } | { err
       return { error: 'The "google" provider has no API key configured in Settings > Providers.' };
     }
     const baseUrl = row.base_url ? row.base_url.replace(/\/+$/, '') : DEFAULT_BASE_URL;
-    return { baseUrl, apiKey: decryptSecret(row.api_key_encrypted) };
+    return {
+      baseUrl,
+      apiKey: decryptSecret(row.api_key_encrypted),
+      inputCostPerMtok: numericColumnToRate(row.input_cost_per_mtok),
+      outputCostPerMtok: numericColumnToRate(row.output_cost_per_mtok),
+    };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return { error: `Failed to load the "google" provider config: ${message}` };
@@ -296,11 +313,11 @@ export class GoogleProvider implements LLMProvider {
         stopReason: toStopReason(candidate.finishReason, hadFunctionCall),
         usage,
         // No generic price table for Google models here either - see
-        // ./openaiCompatible.ts's identical costUsd comment for why this
-        // is 0 rather than guessed at, and what that means for budget
-        // enforcement (../agents/src/runExecutor.ts's
-        // checkBudgetHardStop doc comment cross-references this).
-        costUsd: 0,
+        // ./openaiCompatible.ts's identical comment for why this falls
+        // back to the owner-entered flat rate on Settings > Providers
+        // instead (../agents/src/runExecutor.ts's checkBudgetHardStop doc
+        // comment cross-references this).
+        costUsd: estimateCostFromRates(config, usage),
       };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);

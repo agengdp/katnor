@@ -105,19 +105,26 @@ interface BudgetHit {
  * this function's; see `isSpendPreapproved` and the call site below for
  * that half of the logic.
  *
- * Two gaps this check does NOT cover, surfaced by a Phase 5 cross-review
+ * One gap this check does NOT cover, surfaced by a Phase 5 cross-review
  * rather than something either commit's own comment called out on its
- * own:
- * - An agent hired on the "openai_compatible" or "google" provider always
- *   reports `costUsd: 0` (see @katnor/llm's openaiCompatible.ts/google.ts -
- *   neither has a generic price table for its models), so
- *   `runRepo.sumCostSince` never sees their real spend and this check can
- *   never block them, however much they actually cost against a paid API.
+ * own, and still open:
  * - The scheduled manager-standup and wiki-lint jobs (./standup.ts,
  *   @katnor/knowledge's wikiLint.ts) call `getProvider('anthropic').step()`
  *   directly rather than going through `runAgentExecutor`, so they never
  *   reach this check (or create a `run` row at all) - their cost is both
  *   unenforced and invisible to the cost dashboards.
+ *
+ * A second gap from that same review - an agent hired on "openai_compatible"
+ * or "google" always reporting `costUsd: 0`, since neither had a generic
+ * price table - is now closed: Settings > Providers lets the owner enter an
+ * optional flat $/MTok input/output rate per provider connection
+ * (`provider_config.input_cost_per_mtok`/`output_cost_per_mtok`), which
+ * @katnor/llm's openaiCompatible.ts/google.ts now multiply against real
+ * usage via ./pricing.ts's `estimateCostFromRates`. Left unset, a
+ * provider's spend is still invisible to this check exactly as before -
+ * this is opt-in, not automatic, since there's no way to know a
+ * third-party/self-hosted endpoint's real price without the owner
+ * providing it.
  */
 async function checkBudgetHardStop(
   agent: NonNullable<Awaited<ReturnType<typeof agentRepo.getById>>>,

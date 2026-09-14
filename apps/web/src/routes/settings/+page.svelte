@@ -16,6 +16,14 @@
     // Draft-only input; the server never sends a real key back, so this
     // always starts empty and is cleared again after a successful save.
     apiKey: string;
+    // Optional $/MTok rates (@katnor/db's schema/providerConfig.ts) - kept
+    // as text-input strings, same as apiKey/baseUrl above, rather than
+    // numbers, so an in-progress edit (or a deliberately blank/unset rate)
+    // isn't fought by number-input coercion. Meaningless for "anthropic"
+    // (priced from @katnor/llm's own pricing.ts table) - not rendered for
+    // that row, see the markup below.
+    inputCostPerMtok: string;
+    outputCostPerMtok: string;
     saving: boolean;
     saveError: string | null;
     justSaved: boolean;
@@ -50,6 +58,8 @@
       // to enabled; the rest start off until someone fills them in.
       enabled: provider === 'anthropic',
       apiKey: '',
+      inputCostPerMtok: '',
+      outputCostPerMtok: '',
       saving: false,
       saveError: null,
       justSaved: false
@@ -84,7 +94,9 @@
           ...base,
           hasKey: Boolean(existing.hasKey),
           baseUrl: existing.baseUrl ?? '',
-          enabled: Boolean(existing.enabled)
+          enabled: Boolean(existing.enabled),
+          inputCostPerMtok: existing.inputCostPerMtok != null ? String(existing.inputCostPerMtok) : '',
+          outputCostPerMtok: existing.outputCostPerMtok != null ? String(existing.outputCostPerMtok) : ''
         };
       });
     } catch (err) {
@@ -103,10 +115,39 @@
     loadProviders();
   });
 
+  // Parses a rate input: blank -> null (clears/leaves unset), otherwise a
+  // finite non-negative number. Returns 'invalid' rather than throwing so
+  // the caller can show a clear per-field error instead of silently
+  // sending garbage or a wrong fallback.
+  // 999,999 matches the DB column's `numeric(12, 6)` precision - see
+  // @katnor/core's schemas/providerConfig.ts for the full rationale. Kept
+  // in sync with that same bound (and the server's own copy in
+  // apps/server/src/trpc/routers/settings.ts) so a too-large rate fails
+  // here with a clear message instead of round-tripping to the server
+  // first for a raw numeric-overflow error.
+  const MAX_COST_RATE = 999_999;
+
+  function parseRate(raw: string): number | null | 'invalid' {
+    const trimmed = raw.trim();
+    if (trimmed === '') return null;
+    const n = Number(trimmed);
+    if (!Number.isFinite(n) || n < 0 || n > MAX_COST_RATE) return 'invalid';
+    return n;
+  }
+
   async function saveRow(row: ProviderRow) {
     row.saving = true;
     row.saveError = null;
     row.justSaved = false;
+
+    const inputRate = parseRate(row.inputCostPerMtok);
+    const outputRate = parseRate(row.outputCostPerMtok);
+    if (inputRate === 'invalid' || outputRate === 'invalid') {
+      row.saveError = `Cost rates must be a number from 0 to ${MAX_COST_RATE}, or left blank.`;
+      row.saving = false;
+      return;
+    }
+
     try {
       const client = trpc();
       const trimmedKey = row.apiKey.trim();
@@ -117,7 +158,9 @@
         // the base URL or the enabled flag doesn't clobber an existing key.
         apiKey: trimmedKey === '' ? undefined : trimmedKey,
         baseUrl: trimmedBaseUrl === '' ? null : trimmedBaseUrl,
-        enabled: row.enabled
+        enabled: row.enabled,
+        inputCostPerMtok: inputRate,
+        outputCostPerMtok: outputRate
       });
       if (trimmedKey !== '') row.hasKey = true;
       row.apiKey = '';
@@ -620,6 +663,36 @@
             <input type="checkbox" bind:checked={row.enabled} class="h-4 w-4" />
             <span>Enabled</span>
           </label>
+
+          {#if row.provider !== 'anthropic'}
+            <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+              <label class="flex flex-col gap-1 text-sm">
+                <span class="text-[var(--color-text-muted)]">Input $/MTok (optional)</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="e.g. 0.50"
+                  bind:value={row.inputCostPerMtok}
+                  class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+                />
+              </label>
+              <label class="flex flex-col gap-1 text-sm">
+                <span class="text-[var(--color-text-muted)]">Output $/MTok (optional)</span>
+                <input
+                  type="text"
+                  inputmode="decimal"
+                  placeholder="e.g. 1.50"
+                  bind:value={row.outputCostPerMtok}
+                  class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+                />
+              </label>
+            </div>
+            <p class="text-xs text-[var(--color-text-muted)]">
+              Left blank, spend on this provider is untracked ($0) rather than guessed at - no
+              generic price table exists for a third-party or self-hosted endpoint. Set these to
+              feed real spend into budgets and the cost dashboard.
+            </p>
+          {/if}
 
           {#if row.saveError}
             <p class="text-sm text-[var(--color-danger)]">{row.saveError}</p>

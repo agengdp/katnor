@@ -1,4 +1,4 @@
-import { boolean, jsonb, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
+import { boolean, jsonb, numeric, pgTable, text, timestamp } from 'drizzle-orm/pg-core';
 import { baseColumns } from './columns.js';
 import { modelProviderEnum } from './enums.js';
 
@@ -15,4 +15,17 @@ export const providerConfig = pgTable('provider_config', {
     withTimezone: true,
     mode: 'date',
   }),
+  // Optional, owner-entered $/million-token rates - unlike ./enums.js's
+  // `anthropic` provider (priced from @katnor/llm's hand-maintained
+  // pricing.ts table), an arbitrary third-party/self-hosted endpoint has
+  // no generic price table this system could know ahead of time, so
+  // ./openaiCompatible.ts and ./google.ts (well, @katnor/llm's versions of
+  // those, not this package) always reported `costUsd: 0` - real but
+  // invisible to budgets/cost dashboards. NULL (the default) keeps that
+  // exact behavior; a value here is a single flat rate applied to every
+  // model run under this provider row, a deliberate v1 simplification
+  // (one rate per provider connection, not per model) rather than a
+  // precise per-model catalog.
+  input_cost_per_mtok: numeric('input_cost_per_mtok', { precision: 12, scale: 6 }),
+  output_cost_per_mtok: numeric('output_cost_per_mtok', { precision: 12, scale: 6 }),
 });

@@ -8,6 +8,21 @@ import { protectedProcedure, publicProcedure, router } from '../trpc.js';
 type ProviderConfigRow = typeof providerConfig.$inferSelect;
 
 /**
+ * `provider_config.input_cost_per_mtok`/`output_cost_per_mtok` are `numeric`
+ * columns - drizzle reads/writes those as strings, not JS numbers. Shared by
+ * `upsertProvider`'s update and insert branches below to keep the
+ * number-or-null -> string-or-null conversion in one place.
+ */
+function toNumericColumn(value: number | null): string | null {
+  return value === null ? null : String(value);
+}
+
+/** The reverse of `toNumericColumn` above, for reading a row back out. */
+function fromNumericColumn(value: string | null): number | null {
+  return value === null ? null : Number(value);
+}
+
+/**
  * Maps a `provider_config` row to what the client is allowed to see: never
  * the decrypted key, never even the ciphertext - just whether a key is
  * configured at all.
@@ -18,6 +33,8 @@ function toPublicProvider(row: ProviderConfigRow) {
     hasKey: row.api_key_encrypted !== null,
     baseUrl: row.base_url,
     enabled: row.enabled,
+    inputCostPerMtok: fromNumericColumn(row.input_cost_per_mtok),
+    outputCostPerMtok: fromNumericColumn(row.output_cost_per_mtok),
   };
 }
 
@@ -33,6 +50,15 @@ const upsertProviderInputSchema = z.object({
   // Present-but-null -> clear the base URL. Omitted -> leave it untouched.
   baseUrl: z.string().min(1).nullable().optional(),
   enabled: z.boolean(),
+  // Present-but-null -> clear the rate back to "untracked" (costUsd: 0).
+  // Omitted -> leave it untouched. See @katnor/db's schema/providerConfig.ts
+  // for why this exists: "anthropic" is priced from @katnor/llm's own
+  // pricing.ts table and never reads these, so they're meaningless (and
+  // not offered in the web UI) for that one provider. The 999,999 max
+  // matches the DB column's `numeric(12, 6)` precision - see the matching
+  // bound (and its full rationale) in @katnor/core's schemas/providerConfig.ts.
+  inputCostPerMtok: z.number().min(0).max(999_999).nullable().optional(),
+  outputCostPerMtok: z.number().min(0).max(999_999).nullable().optional(),
 });
 
 export const settingsRouter = router({
@@ -60,6 +86,12 @@ export const settingsRouter = router({
           enabled: input.enabled,
           ...(input.baseUrl !== undefined ? { base_url: input.baseUrl } : {}),
           ...(apiKeyEncrypted !== undefined ? { api_key_encrypted: apiKeyEncrypted } : {}),
+          ...(input.inputCostPerMtok !== undefined
+            ? { input_cost_per_mtok: toNumericColumn(input.inputCostPerMtok) }
+            : {}),
+          ...(input.outputCostPerMtok !== undefined
+            ? { output_cost_per_mtok: toNumericColumn(input.outputCostPerMtok) }
+            : {}),
           updated_at: new Date(),
         })
         .where(eq(providerConfig.id, existing.id))
@@ -78,6 +110,8 @@ export const settingsRouter = router({
         enabled: input.enabled,
         base_url: input.baseUrl ?? null,
         api_key_encrypted: apiKeyEncrypted ?? null,
+        input_cost_per_mtok: toNumericColumn(input.inputCostPerMtok ?? null),
+        output_cost_per_mtok: toNumericColumn(input.outputCostPerMtok ?? null),
       })
       .returning();
     if (!created) {

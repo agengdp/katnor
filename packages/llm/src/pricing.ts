@@ -49,3 +49,33 @@ export function estimateCostUsd(model: string, usage: StepUsage): number {
   const cacheReadCost = (usage.cacheReadTokens / 1_000_000) * rate.inputPerMTok * 0.1;
   return inputCost + outputCost + cacheWriteCost + cacheReadCost;
 }
+
+/**
+ * `provider_config.input_cost_per_mtok`/`output_cost_per_mtok` are Postgres
+ * `numeric` columns - drizzle reads those back as strings, not JS numbers.
+ * Shared by ./openaiCompatible.ts's and ./google.ts's `readConfig()`.
+ */
+export function numericColumnToRate(value: string | null): number | null {
+  return value === null ? null : Number(value);
+}
+
+/**
+ * Computes USD cost from an owner-entered flat rate on a `provider_config`
+ * row, for the providers with no generic price table this package could
+ * hand-maintain the way `estimateCostUsd` above does for Anthropic's own
+ * models (./openaiCompatible.ts and ./google.ts, whose adapters use this
+ * instead of `estimateCostUsd`). Either rate left `null` (unconfigured)
+ * contributes $0 for that side - and both `null` is exactly the pre-existing
+ * "untracked spend, reported as $0" behavior neither adapter had a way to
+ * override before this rate existed. No cache-token terms: neither adapter
+ * declares `supportsPromptCaching`, so `usage.cacheReadTokens`/
+ * `cacheCreationTokens` are always 0 for them.
+ */
+export function estimateCostFromRates(
+  rates: { inputCostPerMtok: number | null; outputCostPerMtok: number | null },
+  usage: StepUsage,
+): number {
+  const inputCost = (usage.inputTokens / 1_000_000) * (rates.inputCostPerMtok ?? 0);
+  const outputCost = (usage.outputTokens / 1_000_000) * (rates.outputCostPerMtok ?? 0);
+  return inputCost + outputCost;
+}
