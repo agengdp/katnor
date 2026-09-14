@@ -361,6 +361,10 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
         model: agent.model_config.model,
         usage: result.usage,
         refusal_category: result.refusalCategory ?? null,
+        // Only set by @katnor/llm's ComboProvider - which real
+        // (provider, model) pair inside the combo actually answered this
+        // call, since `model` above is just the combo's name.
+        served_by: result.servedBy ?? null,
       },
       { tokens: result.usage.inputTokens + result.usage.outputTokens, durationMs: stepDurationMs },
     );

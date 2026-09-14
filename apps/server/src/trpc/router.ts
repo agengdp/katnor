@@ -6,6 +6,7 @@ import { channelsRouter } from './routers/channels.js';
 import { healthRouter } from './routers/health.js';
 import { knowledgeRouter } from './routers/knowledge.js';
 import { messagesRouter } from './routers/messages.js';
+import { modelCombosRouter } from './routers/modelCombos.js';
 import { projectsRouter } from './routers/projects.js';
 import { runsRouter } from './routers/runs.js';
 import { secretsRouter } from './routers/secrets.js';
@@ -38,6 +39,7 @@ export const appRouter = router({
   secrets: secretsRouter,
   knowledge: knowledgeRouter,
   users: usersRouter,
+  modelCombos: modelCombosRouter,
 });
 
 /**

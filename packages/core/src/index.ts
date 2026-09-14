@@ -21,3 +21,4 @@ export * from './schemas/providerConfig.js';
 export * from './schemas/approval.js';
 export * from './schemas/secret.js';
 export * from './schemas/user.js';
+export * from './schemas/modelCombo.js';

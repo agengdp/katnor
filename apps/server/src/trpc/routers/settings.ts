@@ -1,6 +1,6 @@
 import { eq } from 'drizzle-orm';
 import { z } from 'zod';
-import { approvalModeSchema, MODEL_PROVIDERS } from '@katnor/core';
+import { approvalModeSchema, MODEL_COMBO_ENTRY_PROVIDERS } from '@katnor/core';
 import { companyRepo, providerConfig, ulid } from '@katnor/db';
 import { encryptSecret } from '../../crypto.js';
 import { protectedProcedure, publicProcedure, router } from '../trpc.js';
@@ -22,7 +22,10 @@ function toPublicProvider(row: ProviderConfigRow) {
 }
 
 const upsertProviderInputSchema = z.object({
-  provider: z.enum(MODEL_PROVIDERS),
+  // "combo" (@katnor/core's MODEL_PROVIDERS) is deliberately excluded here:
+  // it's a named fallback chain across the providers below, not a real
+  // backend with its own base_url/api_key - see @katnor/llm's combo.ts.
+  provider: z.enum(MODEL_COMBO_ENTRY_PROVIDERS),
   // Omitted entirely -> leave the existing key untouched. Present -> replace it.
   // There is no way to *clear* a key back to unset via this input - that's an
   // intentional gap for now (the UI only ever offers "set a new key").

@@ -71,5 +71,28 @@ export type ToolConfigKind = (typeof TOOL_CONFIG_KINDS)[number];
 export const AGENT_STATUSES = ['active', 'paused', 'offline'] as const;
 export type AgentStatus = (typeof AGENT_STATUSES)[number];
 
-export const MODEL_PROVIDERS = ['anthropic', 'openai_compatible', 'google', 'ollama'] as const;
+export const MODEL_PROVIDERS = [
+  'anthropic',
+  'openai_compatible',
+  'google',
+  'ollama',
+  'combo',
+] as const;
 export type ModelProvider = (typeof MODEL_PROVIDERS)[number];
+
+/**
+ * The `ModelProvider` values a `model_combo` entry (@katnor/core's
+ * schemas/modelCombo.ts) can point at - every real provider except
+ * `"combo"` itself, so a combo can never nest another combo (no cycles,
+ * no "which one actually answered" ambiguity to chase through more than
+ * one level). Hand-maintained rather than derived from `MODEL_PROVIDERS`
+ * by filtering, so `z.enum(...)` gets the literal tuple type it needs -
+ * keep in sync by hand if a new provider is ever added above.
+ */
+export const MODEL_COMBO_ENTRY_PROVIDERS = [
+  'anthropic',
+  'openai_compatible',
+  'google',
+  'ollama',
+] as const;
+export type ModelComboEntryProvider = (typeof MODEL_COMBO_ENTRY_PROVIDERS)[number];

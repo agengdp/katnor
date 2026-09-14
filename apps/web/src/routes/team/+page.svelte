@@ -68,7 +68,13 @@
     anthropic: 'Anthropic',
     openai_compatible: 'OpenAI-compatible',
     google: 'Google',
-    ollama: 'Ollama (local)'
+    ollama: 'Ollama (local)',
+    // Not a real backend - @katnor/llm's ComboProvider resolves this to a
+    // named `model_combo` row (Settings > Model Combos) and tries each of
+    // its entries in order. See the "Model" field below: when this
+    // provider is selected, that field switches from free text to a
+    // dropdown of existing combo names.
+    combo: 'Combo (fallback chain)'
   };
 
   function describeError(err: unknown): string {
@@ -108,6 +114,9 @@
   // ---- Data + live updates -------------------------------------------------
   let agents = $state<AgentRow[]>([]);
   let teams = $state<TeamRow[]>([]);
+  // Just names, for the "Model" dropdown that replaces free text when
+  // provider === "combo" - see hireDraft/editDraft below.
+  let modelCombos = $state<{ id: string; name: string }[]>([]);
   let loading = $state(true);
   let loadError = $state<string | null>(null);
 
@@ -154,9 +163,14 @@
     }
     try {
       const client = trpc();
-      const [agentRows, teamRows] = await Promise.all([client.agents.list.query(), client.teams.list.query()]);
+      const [agentRows, teamRows, comboRows] = await Promise.all([
+        client.agents.list.query(),
+        client.teams.list.query(),
+        client.modelCombos.list.query()
+      ]);
       agents = agentRows as unknown as AgentRow[];
       teams = teamRows as unknown as TeamRow[];
+      modelCombos = comboRows as unknown as { id: string; name: string }[];
       for (const agent of agents) liveStatusStore.seedFromAgentStatus(agent.id, agent.status);
     } catch (err) {
       // A background refresh (triggered by a live event, or right after a
@@ -544,7 +558,19 @@
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Provider</span>
-            <select bind:value={draft.provider} class={inputClass}>
+            <select
+              value={draft.provider}
+              onchange={(e) => {
+                draft.provider = (e.currentTarget as HTMLSelectElement).value as ModelProvider;
+                // The "Model" field below switches between free text and a
+                // combo-name dropdown depending on provider - a value typed
+                // for one shape (e.g. a real model id) would silently not
+                // match any <option> in the other, so clear it on switch
+                // rather than leaving a stale, invisible-mismatch value.
+                draft.model = '';
+              }}
+              class={inputClass}
+            >
               {#each MODEL_PROVIDERS as p (p)}
                 <option value={p}>{providerLabels[p]}</option>
               {/each}
@@ -552,7 +578,16 @@
           </label>
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Model</span>
-            <input type="text" required bind:value={draft.model} class={inputClass} />
+            {#if draft.provider === 'combo'}
+              <select required bind:value={draft.model} class={inputClass}>
+                <option value="" disabled>Select a combo…</option>
+                {#each modelCombos as combo (combo.id)}
+                  <option value={combo.name}>{combo.name}</option>
+                {/each}
+              </select>
+            {:else}
+              <input type="text" required bind:value={draft.model} class={inputClass} />
+            {/if}
           </label>
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Effort</span>
@@ -727,7 +762,14 @@
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Provider</span>
-            <select bind:value={hireDraft.provider} class={inputClass}>
+            <select
+              value={hireDraft.provider}
+              onchange={(e) => {
+                hireDraft.provider = (e.currentTarget as HTMLSelectElement).value as ModelProvider;
+                hireDraft.model = '';
+              }}
+              class={inputClass}
+            >
               {#each MODEL_PROVIDERS as p (p)}
                 <option value={p}>{providerLabels[p]}</option>
               {/each}
@@ -735,7 +777,22 @@
           </label>
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Model</span>
-            <input type="text" required placeholder="e.g. claude-sonnet-4-5" bind:value={hireDraft.model} class={inputClass} />
+            {#if hireDraft.provider === 'combo'}
+              <select required bind:value={hireDraft.model} class={inputClass}>
+                <option value="" disabled>Select a combo…</option>
+                {#each modelCombos as combo (combo.id)}
+                  <option value={combo.name}>{combo.name}</option>
+                {/each}
+              </select>
+            {:else}
+              <input
+                type="text"
+                required
+                placeholder="e.g. claude-sonnet-4-5"
+                bind:value={hireDraft.model}
+                class={inputClass}
+              />
+            {/if}
           </label>
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Effort</span>

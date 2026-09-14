@@ -353,6 +353,10 @@
     {@const usage = asRecord(payload.usage)}
     <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--color-text-muted)]">
       <span>model: <span class="text-[var(--color-text)]">{asString(payload.model, 'unknown')}</span></span>
+      {#if payload.served_by}
+        {@const servedBy = asRecord(payload.served_by)}
+        <span>served by: <span class="text-[var(--color-text)]">{asString(servedBy.provider, '?')}/{asString(servedBy.model, '?')}</span></span>
+      {/if}
       <span>stop: <span class="text-[var(--color-text)]">{asString(payload.stop_reason, 'unknown')}</span></span>
       {#if usage.inputTokens != null || usage.outputTokens != null}
         <span>usage: <span class="text-[var(--color-text)]">{Number(usage.inputTokens ?? 0)} in / {Number(usage.outputTokens ?? 0)} out</span></span>

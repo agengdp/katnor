@@ -147,6 +147,16 @@ export interface StepResult {
   refusalCategory?: string | null;
   /** Set when `stopReason === 'error'` and the caller should stop retrying (e.g. a 400). */
   errorMessage?: string;
+  /**
+   * Set only by ./combo.ts's `ComboProvider` - which real (provider, model)
+   * pair actually answered this call, since the agent's own
+   * `model_config.provider`/`model` just names the combo, not the entry
+   * that ended up serving it (earlier entries may have errored and been
+   * skipped). Every other adapter leaves this unset; @katnor/agents'
+   * runExecutor.ts records it on the `run_step` when present so the Runs
+   * page can show which entry actually ran, not just "claude-opus-combo."
+   */
+  servedBy?: { provider: ModelProvider; model: string };
 }
 
 export interface ProviderCapabilities {

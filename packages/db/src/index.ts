@@ -28,3 +28,4 @@ export * as kgEdgeRepo from './repositories/kgEdge.js';
 export * as wikiPageRepo from './repositories/wikiPage.js';
 export * as providerConfigRepo from './repositories/providerConfig.js';
 export * as userRepo from './repositories/user.js';
+export * as modelComboRepo from './repositories/modelCombo.js';

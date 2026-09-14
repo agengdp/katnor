@@ -1,9 +1,15 @@
 <script lang="ts">
-  import { APPROVAL_MODES, MODEL_PROVIDERS, type ApprovalMode, type ModelProvider, type ToolConfigKind } from '@katnor/core';
+  import {
+    APPROVAL_MODES,
+    MODEL_COMBO_ENTRY_PROVIDERS,
+    type ApprovalMode,
+    type ModelComboEntryProvider,
+    type ToolConfigKind
+  } from '@katnor/core';
   import { serverOrigin, trpc } from '$lib/trpc';
 
   type ProviderRow = {
-    provider: ModelProvider;
+    provider: ModelComboEntryProvider;
     hasKey: boolean;
     baseUrl: string;
     enabled: boolean;
@@ -15,21 +21,27 @@
     justSaved: boolean;
   };
 
-  const providerLabels: Record<ModelProvider, string> = {
+  const providerLabels: Record<ModelComboEntryProvider, string> = {
     anthropic: 'Anthropic',
     openai_compatible: 'OpenAI-compatible',
     google: 'Google',
     ollama: 'Ollama (local)'
   };
 
-  const baseUrlHints: Record<ModelProvider, string> = {
+  const baseUrlHints: Record<ModelComboEntryProvider, string> = {
     anthropic: 'Defaults to https://api.anthropic.com - only set this for a proxy.',
     openai_compatible: 'e.g. https://api.openai.com/v1, or your own OpenAI-compatible endpoint.',
     google: 'Defaults to the Google AI API - only set this for a proxy.',
     ollama: 'Defaults to http://localhost:11434/v1 (Ollama\'s own OpenAI-compatible endpoint) - only set this if Ollama runs elsewhere.'
   };
 
-  function emptyRow(provider: ModelProvider): ProviderRow {
+  // Note: "combo" (@katnor/core's MODEL_PROVIDERS) is deliberately absent
+  // from both maps above and from the connection rows below - it isn't a
+  // real backend with its own base_url/api_key, just a named fallback
+  // chain across the providers listed here. It gets its own "Model
+  // Combos" section further down this page instead.
+
+  function emptyRow(provider: ModelComboEntryProvider): ProviderRow {
     return {
       provider,
       hasKey: false,
@@ -44,7 +56,7 @@
     };
   }
 
-  let rows = $state<ProviderRow[]>(MODEL_PROVIDERS.map(emptyRow));
+  let rows = $state<ProviderRow[]>(MODEL_COMBO_ENTRY_PROVIDERS.map(emptyRow));
   let loading = $state(true);
   let loadError = $state<string | null>(null);
 
@@ -64,7 +76,7 @@
       const remote: any[] = await client.settings.listProviders.query();
       const remoteByProvider = new Map(remote.map((row) => [row.provider, row]));
 
-      rows = MODEL_PROVIDERS.map((provider) => {
+      rows = MODEL_COMBO_ENTRY_PROVIDERS.map((provider) => {
         const existing = remoteByProvider.get(provider);
         const base = emptyRow(provider);
         if (!existing) return base;
@@ -420,6 +432,120 @@
       usersError = describeError(err);
     } finally {
       removingIds[id] = false;
+    }
+  }
+
+  // ─── Model combos (named fallback chains across providers) ──────────────
+
+  type ComboEntryDraft = { provider: ModelComboEntryProvider; model: string };
+  type ComboRow = { id: string; name: string; entries: ComboEntryDraft[] };
+
+  let combos = $state<ComboRow[]>([]);
+  let combosLoading = $state(true);
+  let combosError = $state<string | null>(null);
+
+  function emptyEntry(): ComboEntryDraft {
+    return { provider: 'anthropic', model: '' };
+  }
+
+  let newComboName = $state('');
+  let newComboEntries = $state<ComboEntryDraft[]>([emptyEntry()]);
+  let creatingCombo = $state(false);
+  let createComboError = $state<string | null>(null);
+
+  let editingComboId = $state<string | null>(null);
+  let editComboName = $state('');
+  let editComboEntries = $state<ComboEntryDraft[]>([]);
+  let savingComboEdit = $state(false);
+  let editComboError = $state<string | null>(null);
+
+  let removingComboIds = $state<Record<string, boolean>>({});
+
+  async function loadCombos() {
+    combosLoading = true;
+    combosError = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      combos = (await trpc().modelCombos.list.query()) as any as ComboRow[];
+    } catch (err) {
+      combosError = describeError(err);
+    } finally {
+      combosLoading = false;
+    }
+  }
+
+  $effect(() => {
+    loadCombos();
+  });
+
+  function sanitizeEntries(entries: ComboEntryDraft[]): ComboEntryDraft[] {
+    return entries.map((e) => ({ provider: e.provider, model: e.model.trim() })).filter((e) => e.model.length > 0);
+  }
+
+  async function createCombo(event: SubmitEvent) {
+    event.preventDefault();
+    const name = newComboName.trim();
+    const entries = sanitizeEntries(newComboEntries);
+    if (!name || entries.length === 0) {
+      createComboError = 'A name and at least one entry (provider + model) are required.';
+      return;
+    }
+    creatingCombo = true;
+    createComboError = null;
+    try {
+      await trpc().modelCombos.create.mutate({ name, entries });
+      newComboName = '';
+      newComboEntries = [emptyEntry()];
+      await loadCombos();
+    } catch (err) {
+      createComboError = describeError(err);
+    } finally {
+      creatingCombo = false;
+    }
+  }
+
+  function startEditCombo(row: ComboRow) {
+    if (editingComboId === row.id) {
+      editingComboId = null;
+      return;
+    }
+    editingComboId = row.id;
+    editComboName = row.name;
+    editComboEntries = row.entries.map((e) => ({ ...e }));
+    editComboError = null;
+  }
+
+  async function saveComboEdit() {
+    if (!editingComboId) return;
+    const name = editComboName.trim();
+    const entries = sanitizeEntries(editComboEntries);
+    if (!name || entries.length === 0) {
+      editComboError = 'A name and at least one entry (provider + model) are required.';
+      return;
+    }
+    savingComboEdit = true;
+    editComboError = null;
+    try {
+      await trpc().modelCombos.update.mutate({ id: editingComboId, name, entries });
+      editingComboId = null;
+      await loadCombos();
+    } catch (err) {
+      editComboError = describeError(err);
+    } finally {
+      savingComboEdit = false;
+    }
+  }
+
+  async function removeCombo(id: string) {
+    removingComboIds[id] = true;
+    combosError = null;
+    try {
+      await trpc().modelCombos.remove.mutate({ id });
+      await loadCombos();
+    } catch (err) {
+      combosError = describeError(err);
+    } finally {
+      removingComboIds[id] = false;
     }
   }
 </script>
@@ -937,6 +1063,202 @@
           class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
         >
           {addingUser ? 'Adding…' : 'Add teammate'}
+        </button>
+      </div>
+    </form>
+  </section>
+
+  <section class="flex flex-col gap-4">
+    <div class="flex items-center justify-between gap-3">
+      <h2 class="text-lg font-semibold">Model combos</h2>
+      <button
+        type="button"
+        class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+        onclick={loadCombos}
+        disabled={combosLoading}
+      >
+        {combosLoading ? 'Loading…' : 'Reload'}
+      </button>
+    </div>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      A combo is a named, ordered fallback chain across providers - hire an agent onto "Combo" (Team
+      page) and pick one of these by name instead of a single model. On each call, Katnor tries the
+      first entry; if it errors, it automatically tries the next, in order, and uses the first one
+      that answers.
+    </p>
+
+    {#if combosError}
+      <p class="text-sm text-[var(--color-danger)]">{combosError}</p>
+    {/if}
+
+    <div class="flex flex-col gap-2">
+      {#each combos as row (row.id)}
+        <div class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+          <div class="flex items-center justify-between gap-3">
+            <div class="flex flex-col">
+              <span class="text-sm font-medium">{row.name}</span>
+              <span class="text-xs text-[var(--color-text-muted)]">
+                {row.entries.map((e) => `${providerLabels[e.provider] ?? e.provider}/${e.model}`).join(' → ')}
+              </span>
+            </div>
+            <div class="flex shrink-0 gap-2">
+              <button
+                type="button"
+                onclick={() => startEditCombo(row)}
+                class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+              >
+                {editingComboId === row.id ? 'Close' : 'Edit'}
+              </button>
+              <button
+                type="button"
+                onclick={() => removeCombo(row.id)}
+                disabled={removingComboIds[row.id]}
+                class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+              >
+                {removingComboIds[row.id] ? 'Removing…' : 'Remove'}
+              </button>
+            </div>
+          </div>
+
+          {#if editingComboId === row.id}
+            <form
+              class="flex flex-col gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
+              onsubmit={(event) => {
+                event.preventDefault();
+                saveComboEdit();
+              }}
+            >
+              <label class="flex flex-col gap-1 text-sm">
+                <span class="text-[var(--color-text-muted)]">Name</span>
+                <input
+                  type="text"
+                  required
+                  bind:value={editComboName}
+                  class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+                />
+              </label>
+              <div class="flex flex-col gap-2">
+                <span class="text-sm text-[var(--color-text-muted)]">Entries, tried in order</span>
+                {#each editComboEntries as entry, i (i)}
+                  <div class="flex items-center gap-2">
+                    <select
+                      bind:value={entry.provider}
+                      class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
+                    >
+                      {#each MODEL_COMBO_ENTRY_PROVIDERS as p (p)}
+                        <option value={p}>{providerLabels[p]}</option>
+                      {/each}
+                    </select>
+                    <input
+                      type="text"
+                      placeholder="model id"
+                      bind:value={entry.model}
+                      class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+                    />
+                    <button
+                      type="button"
+                      onclick={() => (editComboEntries = editComboEntries.filter((_, idx) => idx !== i))}
+                      disabled={editComboEntries.length <= 1}
+                      class="shrink-0 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-xs disabled:opacity-50"
+                    >
+                      Remove
+                    </button>
+                  </div>
+                {/each}
+                <div>
+                  <button
+                    type="button"
+                    onclick={() => (editComboEntries = [...editComboEntries, emptyEntry()])}
+                    class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+                  >
+                    + Add fallback entry
+                  </button>
+                </div>
+              </div>
+              {#if editComboError}
+                <p class="text-sm text-[var(--color-danger)]">{editComboError}</p>
+              {/if}
+              <div>
+                <button
+                  type="submit"
+                  disabled={savingComboEdit}
+                  class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+                >
+                  {savingComboEdit ? 'Saving…' : 'Save combo'}
+                </button>
+              </div>
+            </form>
+          {/if}
+        </div>
+      {/each}
+      {#if !combosLoading && combos.length === 0}
+        <p class="text-sm text-[var(--color-text-muted)]">No model combos yet.</p>
+      {/if}
+    </div>
+
+    <form
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      onsubmit={createCombo}
+    >
+      <h3 class="text-sm font-semibold">New combo</h3>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-[var(--color-text-muted)]">Name</span>
+        <input
+          type="text"
+          required
+          placeholder="e.g. claude-opus-combo"
+          bind:value={newComboName}
+          class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+        />
+      </label>
+      <div class="flex flex-col gap-2">
+        <span class="text-sm text-[var(--color-text-muted)]">Entries, tried in order</span>
+        {#each newComboEntries as entry, i (i)}
+          <div class="flex items-center gap-2">
+            <select
+              bind:value={entry.provider}
+              class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
+            >
+              {#each MODEL_COMBO_ENTRY_PROVIDERS as p (p)}
+                <option value={p}>{providerLabels[p]}</option>
+              {/each}
+            </select>
+            <input
+              type="text"
+              placeholder="model id"
+              bind:value={entry.model}
+              class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+            />
+            <button
+              type="button"
+              onclick={() => (newComboEntries = newComboEntries.filter((_, idx) => idx !== i))}
+              disabled={newComboEntries.length <= 1}
+              class="shrink-0 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-xs disabled:opacity-50"
+            >
+              Remove
+            </button>
+          </div>
+        {/each}
+        <div>
+          <button
+            type="button"
+            onclick={() => (newComboEntries = [...newComboEntries, emptyEntry()])}
+            class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+          >
+            + Add fallback entry
+          </button>
+        </div>
+      </div>
+      {#if createComboError}
+        <p class="text-sm text-[var(--color-danger)]">{createComboError}</p>
+      {/if}
+      <div>
+        <button
+          type="submit"
+          disabled={creatingCombo}
+          class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {creatingCombo ? 'Creating…' : 'Create combo'}
         </button>
       </div>
     </form>
