@@ -22,6 +22,19 @@
 # packages @katnor/worker actually depends on and lets the runtime stage
 # copy a much smaller tree instead of mirroring pnpm's full symlinked
 # node_modules layout.
+#
+# Why this runs via `tsx` instead of `node dist/index.js`: same reason as
+# apps/server/Dockerfile's identical comment - @katnor/agents, @katnor/db,
+# @katnor/knowledge etc. have no `build` step of their own (`main`/`types`
+# point straight at `./src/index.ts`), so the compiled `dist/index.js`'s
+# `import ... from "@katnor/db"` would resolve, at runtime, straight
+# through to that raw .ts file, which plain `node` cannot execute. `tsc -p
+# tsconfig.json` below still runs as a build-time type-check gate; the
+# runtime stage discards its `dist/` output and instead runs `tsx` against
+# the TypeScript source directly, exactly like the `dev` script already
+# does. `tsx` is already a devDependency of @katnor/worker, so it's
+# already present in the `node_modules` the builder's `pnpm install` (no
+# `--prod`) produces and the runtime stage copies wholesale below.
 
 # ---- builder ----------------------------------------------------------
 FROM node:22-slim AS builder
@@ -57,19 +70,26 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /
 # pnpm hoists workspace packages (e.g. @katnor/core, @katnor/db) into
 # node_modules as symlinks back into packages/*, so - until turbo prune
 # trims this down - the runtime image needs the same repo layout as the
-# builder for those symlinks to resolve, not just apps/worker/dist on its
-# own.
+# builder for those symlinks to resolve. `apps/worker/src` (not `dist`) is
+# what actually runs - see the module comment above for why.
 COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages ./packages
-COPY --from=builder /repo/apps/worker/dist ./apps/worker/dist
+COPY --from=builder /repo/apps/worker/src ./apps/worker/src
+COPY --from=builder /repo/apps/worker/tsconfig.json ./apps/worker/tsconfig.json
 COPY --from=builder /repo/apps/worker/node_modules ./apps/worker/node_modules
 COPY --from=builder /repo/apps/worker/package.json ./apps/worker/package.json
 COPY --from=builder /repo/package.json ./package.json
 COPY --from=builder /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /repo/tsconfig.base.json ./tsconfig.base.json
 
 WORKDIR /repo/apps/worker
 
 # No HTTP server here - the worker only holds a pg-boss connection to
 # Postgres (DATABASE_URL) and runs the heartbeat/job loop in src/index.ts,
 # so there is no port to EXPOSE.
-CMD ["node", "dist/index.js"]
+#
+# `tsx` (not `node`) - see the module comment above. No `watch`: unlike
+# the `dev` script, this should exit on a crash rather than sit idle
+# waiting for a file change that will never come, so `restart:
+# unless-stopped` (docker-compose.yml) actually gets to restart it.
+CMD ["npx", "tsx", "src/index.ts"]

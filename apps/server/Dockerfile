@@ -21,16 +21,25 @@
 # replace the whole-repo COPY in both stages below with the pruned
 # out/json + out/full directories it produces, same TODO as apps/web/Dockerfile.
 #
-# TODO(integrate): apps/server imports @katnor/db and @katnor/core directly
-# from their TypeScript source (both packages' package.json point `main`/
-# `types` at `./src/index.ts`, not a built `dist/`) - `tsc`'s own build of
-# @katnor/server (this Dockerfile's build step) type-checks fine against
-# that, but the COMPILED OUTPUT in dist/ still does `import ... from
-# "@katnor/db"`, which Node resolves at runtime the same way: straight to
-# the *.ts* source file. Plain `node dist/index.js` cannot execute a raw
-# .ts file. Until @katnor/db/@katnor/core gain their own build step (or
-# this image runs via `tsx` instead of compiled `dist/`), the CMD below
-# will need adjusting - flagged here rather than silently papered over.
+# Why this runs via `tsx` instead of `node dist/index.js`: every internal
+# workspace package @katnor/server depends on (@katnor/core, @katnor/db,
+# @katnor/agents, @katnor/artifacts, @katnor/knowledge, ...) has its
+# package.json `main`/`types` pointing straight at `./src/index.ts` - none
+# of them has a `build` script of its own (only `tsc --noEmit` for type
+# checking). `tsc -p tsconfig.json` below still compiles @katnor/server's
+# own src/ to dist/ (a real, useful type-check gate that fails this image
+# build on a type error) but the emitted JS's `import ... from
+# "@katnor/db"` resolves, at runtime, straight through to that raw .ts
+# file - which plain `node` cannot execute at all ("Unknown file
+# extension .ts"). Rather than retrofit a build step onto every one of
+# those packages (unverifiable in the environment this was written in -
+# no registry access to actually run any of those builds), the runtime
+# stage instead runs the exact same way `dev` already does and is known
+# to work: `tsx` against the TypeScript source directly, dist/ discarded.
+# `tsx` itself needs no extra step to end up in the runtime image - it's
+# already a devDependency of @katnor/server, and the builder's `pnpm
+# install` (no `--prod`) installs it into `apps/server/node_modules`,
+# which the runtime stage copies wholesale below.
 
 # ---- builder ----------------------------------------------------------
 FROM node:22-slim AS builder
@@ -66,16 +75,19 @@ RUN apt-get update && apt-get install -y --no-install-recommends git && rm -rf /
 # pnpm hoists workspace packages (e.g. @katnor/core, @katnor/db) into
 # node_modules as symlinks back into packages/*, so - until turbo prune
 # trims this down - the runtime image needs the same repo layout as the
-# builder for those symlinks to resolve, not just apps/server/dist on its
-# own. See the TODO above about @katnor/db/@katnor/core shipping only
-# TypeScript source right now.
+# builder for those symlinks to resolve. `apps/server/src` (not `dist`) is
+# what actually runs - see the module comment above for why - `dist` is
+# left out of this image entirely; it only existed as a build-time
+# type-check gate in the builder stage.
 COPY --from=builder /repo/node_modules ./node_modules
 COPY --from=builder /repo/packages ./packages
-COPY --from=builder /repo/apps/server/dist ./apps/server/dist
+COPY --from=builder /repo/apps/server/src ./apps/server/src
+COPY --from=builder /repo/apps/server/tsconfig.json ./apps/server/tsconfig.json
 COPY --from=builder /repo/apps/server/node_modules ./apps/server/node_modules
 COPY --from=builder /repo/apps/server/package.json ./apps/server/package.json
 COPY --from=builder /repo/package.json ./package.json
 COPY --from=builder /repo/pnpm-workspace.yaml ./pnpm-workspace.yaml
+COPY --from=builder /repo/tsconfig.base.json ./tsconfig.base.json
 
 WORKDIR /repo/apps/server
 
@@ -84,4 +96,8 @@ WORKDIR /repo/apps/server
 ENV SERVER_PORT=3001
 EXPOSE 3001
 
-CMD ["node", "dist/index.js"]
+# `tsx` (not `node`) - see the module comment above. No `watch`: unlike
+# the `dev` script, this should exit on a crash rather than sit idle
+# waiting for a file change that will never come, so `restart:
+# unless-stopped` (docker-compose.yml) actually gets to restart it.
+CMD ["npx", "tsx", "src/index.ts"]
