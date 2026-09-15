@@ -67,11 +67,15 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
+      # No pnpm-lock.yaml is committed yet - actions/setup-node's own
+      # `cache: pnpm` option requires one to hash as a cache key and hard-fails
+      # without it ("Dependencies lock file is not found"), same reasoning as
+      # ci.yml's identical comment. Add `cache: pnpm` back here once a
+      # lockfile exists.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
       - name: Install dependencies
         run: pnpm install
