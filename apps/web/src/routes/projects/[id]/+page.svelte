@@ -499,6 +499,18 @@
                       </div>
                     {/if}
 
+                    <!--
+                      These handlers add no interaction of their own - they
+                      only stop a click/drag on the assignee control from
+                      reaching the card wrapper above, which is a
+                      `role="button"` that toggles expand (and a dndzone
+                      drag source). The `<select>` inside keeps its own
+                      native keyboard handling, and the `<label>` keeps its
+                      labelling semantics, so the two a11y rules below are
+                      false positives here rather than a missing keyboard
+                      affordance.
+                    -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
                     <label
                       class="flex items-center gap-1.5 text-xs"
                       onclick={(e) => e.stopPropagation()}
