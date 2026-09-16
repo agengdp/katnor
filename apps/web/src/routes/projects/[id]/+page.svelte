@@ -428,8 +428,8 @@
             <div
               class="flex min-h-[100px] flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-2"
               use:dndzone={{ items: column.tasks, flipDurationMs, type: dndType }}
-              on:consider={(e) => handleConsider(colIndex, e)}
-              on:finalize={(e) => handleFinalize(colIndex, e)}
+              onconsider={(e) => handleConsider(colIndex, e as CustomEvent<DndDetail>)}
+              onfinalize={(e) => handleFinalize(colIndex, e as CustomEvent<DndDetail>)}
             >
               {#each column.tasks as task (task.id)}
                 <div animate:flip={{ duration: flipDurationMs }}>

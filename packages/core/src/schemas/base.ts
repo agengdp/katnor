@@ -11,7 +11,8 @@ export const baseFields = {
   updated_at: z.date(),
 };
 
-const baseSchema = z.object(baseFields);
+/** The base fields as a standalone schema - `BaseFields` is inferred from it. */
+export const baseSchema = z.object(baseFields);
 export type BaseFields = z.infer<typeof baseSchema>;
 
 /**

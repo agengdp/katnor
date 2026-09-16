@@ -115,7 +115,12 @@
   // on whichever agent was selected first. Comparing against the last URL
   // value (rather than just re-reading it) is what keeps this from also
   // stomping on a filter the owner picked by hand from the dropdown.
-  let lastUrlAgentFilter = agentFilter;
+  //
+  // Seeded from the URL directly rather than from `agentFilter` - the two are
+  // the same string at init (see that `$state()` initializer above), but
+  // reading the `$state` here would only ever capture its initial value,
+  // which Svelte flags as `state_referenced_locally`.
+  let lastUrlAgentFilter = $page.url.searchParams.get('agent') ?? '';
   $effect(() => {
     const urlAgentFilter = $page.url.searchParams.get('agent') ?? '';
     if (urlAgentFilter !== lastUrlAgentFilter) {
