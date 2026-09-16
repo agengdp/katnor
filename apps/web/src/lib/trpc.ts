@@ -47,7 +47,7 @@ export function trpc(init?: TRPCClientInit) {
   if (isBrowser && browserClient) return browserClient;
 
   const client = createTRPCClient<AppRouter>({
-    init: { url: trpcUrl, ...init }
+    init: { url: trpcUrl, ...init },
   });
 
   if (isBrowser) browserClient = client;

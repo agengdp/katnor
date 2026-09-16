@@ -1,7 +1,16 @@
 import { createHash } from 'node:crypto';
 import { QUEUES } from '@katnor/agents';
 import { eventRepo, kgEdgeRepo, kgNodeRepo, projectRepo, wikiPageRepo } from '@katnor/db';
-import { answerWithCitations, commit, embed, ensureProjectWiki, listPages, readPage, searchKnowledge, writePage } from '@katnor/knowledge';
+import {
+  answerWithCitations,
+  commit,
+  embed,
+  ensureProjectWiki,
+  listPages,
+  readPage,
+  searchKnowledge,
+  writePage,
+} from '@katnor/knowledge';
 import { z } from 'zod';
 import { protectedProcedure, publicProcedure, router } from '../trpc.js';
 
@@ -27,23 +36,30 @@ export const knowledgeRouter = router({
     .input(z.object({ projectId: z.string(), question: z.string() }))
     .mutation(({ input }) => answerWithCitations(input.projectId, input.question)),
 
-  listWikiPages: publicProcedure.input(z.object({ projectId: z.string() })).query(async ({ input }) => {
-    const project = await requireProject(input.projectId);
-    await ensureProjectWiki(project.id, project.name);
-    const [paths, rows] = await Promise.all([listPages(project.id), wikiPageRepo.list(project.id)]);
-    const byPath = new Map(rows.map((row) => [row.path, row]));
-    return paths.map((path) => ({
-      path,
-      title: byPath.get(path)?.title ?? path,
-      updatedAt: byPath.get(path)?.updated_at ?? null,
-    }));
-  }),
+  listWikiPages: publicProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(async ({ input }) => {
+      const project = await requireProject(input.projectId);
+      await ensureProjectWiki(project.id, project.name);
+      const [paths, rows] = await Promise.all([
+        listPages(project.id),
+        wikiPageRepo.list(project.id),
+      ]);
+      const byPath = new Map(rows.map((row) => [row.path, row]));
+      return paths.map((path) => ({
+        path,
+        title: byPath.get(path)?.title ?? path,
+        updatedAt: byPath.get(path)?.updated_at ?? null,
+      }));
+    }),
 
-  getWikiPage: publicProcedure.input(z.object({ projectId: z.string(), path: z.string() })).query(async ({ input }) => {
-    const content = await readPage(input.projectId, input.path);
-    if (content === null) throw new Error(`No wiki page "${input.path}".`);
-    return { path: input.path, content };
-  }),
+  getWikiPage: publicProcedure
+    .input(z.object({ projectId: z.string(), path: z.string() }))
+    .query(async ({ input }) => {
+      const content = await readPage(input.projectId, input.path);
+      if (content === null) throw new Error(`No wiki page "${input.path}".`);
+      return { path: input.path, content };
+    }),
 
   /**
    * A human editing a page directly (PLAN.md 4.5's "humans edit in the
@@ -53,7 +69,14 @@ export const knowledgeRouter = router({
    * instead of an ingest job.
    */
   saveWikiPage: protectedProcedure
-    .input(z.object({ projectId: z.string(), path: z.string(), title: z.string().min(1), content: z.string() }))
+    .input(
+      z.object({
+        projectId: z.string(),
+        path: z.string(),
+        title: z.string().min(1),
+        content: z.string(),
+      }),
+    )
     .mutation(async ({ input }) => {
       const project = await requireProject(input.projectId);
       await ensureProjectWiki(project.id, project.name);
@@ -87,15 +110,19 @@ export const knowledgeRouter = router({
     return { nodes: nodes.map(({ embedding: _embedding, ...rest }) => rest), edges };
   }),
 
-  reindexCode: protectedProcedure.input(z.object({ projectId: z.string() })).mutation(async ({ ctx, input }) => {
-    await requireProject(input.projectId);
-    await ctx.boss.send(QUEUES.CODE_INDEX, { projectId: input.projectId });
-    return { queued: true };
-  }),
+  reindexCode: protectedProcedure
+    .input(z.object({ projectId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireProject(input.projectId);
+      await ctx.boss.send(QUEUES.CODE_INDEX, { projectId: input.projectId });
+      return { queued: true };
+    }),
 
-  lintProject: protectedProcedure.input(z.object({ projectId: z.string() })).mutation(async ({ ctx, input }) => {
-    await requireProject(input.projectId);
-    await ctx.boss.send(QUEUES.WIKI_LINT, { projectId: input.projectId });
-    return { queued: true };
-  }),
+  lintProject: protectedProcedure
+    .input(z.object({ projectId: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      await requireProject(input.projectId);
+      await ctx.boss.send(QUEUES.WIKI_LINT, { projectId: input.projectId });
+      return { queued: true };
+    }),
 });

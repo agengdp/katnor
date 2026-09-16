@@ -17,14 +17,21 @@ function toWorkspaceProject(project: NonNullable<AgentToolContext['project']>): 
 
 const MAX_EXEC_OUTPUT_CHARS = 20_000;
 
-function formatExecResult(result: { stdout: string; stderr: string; exitCode: number; timedOut: boolean }): string {
+function formatExecResult(result: {
+  stdout: string;
+  stderr: string;
+  exitCode: number;
+  timedOut: boolean;
+}): string {
   const parts = [
     `exit code: ${result.exitCode}${result.timedOut ? ' (timed out)' : ''}`,
     result.stdout ? `stdout:\n${result.stdout}` : null,
     result.stderr ? `stderr:\n${result.stderr}` : null,
   ].filter((part): part is string => Boolean(part));
   const joined = parts.join('\n\n') || '(no output)';
-  return joined.length > MAX_EXEC_OUTPUT_CHARS ? `${joined.slice(0, MAX_EXEC_OUTPUT_CHARS)}\n...(truncated)` : joined;
+  return joined.length > MAX_EXEC_OUTPUT_CHARS
+    ? `${joined.slice(0, MAX_EXEC_OUTPUT_CHARS)}\n...(truncated)`
+    : joined;
 }
 
 // PLAN.md 4.2's "approval gates for pushes" - a v1 stand-in for a fuller
@@ -68,9 +75,16 @@ async function gateDangerousShellCommand(
     if (alreadyApproved) return undefined;
   }
 
-  const payload: ToolCallApprovalPayload = { tool_name: GIT_PUSH_TOOL_NAME, project_id: projectId, summary: command };
+  const payload: ToolCallApprovalPayload = {
+    tool_name: GIT_PUSH_TOOL_NAME,
+    project_id: projectId,
+    summary: command,
+  };
   const created = await approvalRepo.create({ run_id: ctx.run.id, kind: 'tool_call', payload });
-  await eventRepo.append({ type: 'approval.requested', payload: { approval_id: created.id, kind: 'tool_call' } });
+  await eventRepo.append({
+    type: 'approval.requested',
+    payload: { approval_id: created.id, kind: 'tool_call' },
+  });
   ctx.pauseRequested = { approvalId: created.id };
   return {
     content: `"${command}" needs the owner's approval first (pending id ${created.id}). Ending this turn - you'll be re-triggered once decided.`,
@@ -99,7 +113,8 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
       properties: {
         repo: {
           type: 'string',
-          description: '"owner/repo" - one of the project\'s configured repos. Omit to run at the workspace root.',
+          description:
+            '"owner/repo" - one of the project\'s configured repos. Omit to run at the workspace root.',
         },
         command: { type: 'string' },
       },
@@ -112,7 +127,10 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
         return { content: 'shell requires command.', isError: true };
       }
       if (!ctx.project) {
-        return { content: 'shell requires a project - this run has no task/project to work in.', isError: true };
+        return {
+          content: 'shell requires a project - this run has no task/project to work in.',
+          isError: true,
+        };
       }
 
       const gated = await gateDangerousShellCommand(command, ctx);
@@ -124,7 +142,9 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
 
       const repoName = str(input, 'repo');
       const repo = repoName
-        ? workspaceProject.repos.find((candidate) => `${candidate.owner}/${candidate.repo}` === repoName)
+        ? workspaceProject.repos.find(
+            (candidate) => `${candidate.owner}/${candidate.repo}` === repoName,
+          )
         : undefined;
       if (repoName && !repo) {
         return { content: `No repo "${repoName}" configured on this project.`, isError: true };
@@ -145,8 +165,14 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        repo: { type: 'string', description: '"owner/repo" - one of the project\'s configured repos.' },
-        prompt: { type: 'string', description: 'What to do, in as much detail as a human engineer would need.' },
+        repo: {
+          type: 'string',
+          description: '"owner/repo" - one of the project\'s configured repos.',
+        },
+        prompt: {
+          type: 'string',
+          description: 'What to do, in as much detail as a human engineer would need.',
+        },
       },
       required: ['repo', 'prompt'],
       additionalProperties: false,
@@ -158,14 +184,19 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
         return { content: 'claude_code requires repo and prompt.', isError: true };
       }
       if (!ctx.project) {
-        return { content: 'claude_code requires a project - this run has no task/project to work in.', isError: true };
+        return {
+          content: 'claude_code requires a project - this run has no task/project to work in.',
+          isError: true,
+        };
       }
 
       const manager = getWorkspaceManager();
       const workspaceProject = toWorkspaceProject(ctx.project);
       await manager.ensureWorkspace(workspaceProject);
 
-      const repo = workspaceProject.repos.find((candidate) => `${candidate.owner}/${candidate.repo}` === repoName);
+      const repo = workspaceProject.repos.find(
+        (candidate) => `${candidate.owner}/${candidate.repo}` === repoName,
+      );
       if (!repo) {
         return { content: `No repo "${repoName}" configured on this project.`, isError: true };
       }
@@ -209,8 +240,14 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
     inputSchema: {
       type: 'object',
       properties: {
-        repo: { type: 'string', description: '"owner/repo" - one of the project\'s configured repos.' },
-        prompt: { type: 'string', description: 'What to do, in as much detail as a human engineer would need.' },
+        repo: {
+          type: 'string',
+          description: '"owner/repo" - one of the project\'s configured repos.',
+        },
+        prompt: {
+          type: 'string',
+          description: 'What to do, in as much detail as a human engineer would need.',
+        },
       },
       required: ['repo', 'prompt'],
       additionalProperties: false,
@@ -222,14 +259,19 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
         return { content: 'codex requires repo and prompt.', isError: true };
       }
       if (!ctx.project) {
-        return { content: 'codex requires a project - this run has no task/project to work in.', isError: true };
+        return {
+          content: 'codex requires a project - this run has no task/project to work in.',
+          isError: true,
+        };
       }
 
       const manager = getWorkspaceManager();
       const workspaceProject = toWorkspaceProject(ctx.project);
       await manager.ensureWorkspace(workspaceProject);
 
-      const repo = workspaceProject.repos.find((candidate) => `${candidate.owner}/${candidate.repo}` === repoName);
+      const repo = workspaceProject.repos.find(
+        (candidate) => `${candidate.owner}/${candidate.repo}` === repoName,
+      );
       if (!repo) {
         return { content: `No repo "${repoName}" configured on this project.`, isError: true };
       }
@@ -264,7 +306,7 @@ export const workTools: ToolDefinition<AgentToolContext>[] = [
 ];
 
 const SERVER_TOOL_NOT_CALLABLE_MESSAGE =
-  'This is a server-side tool - Anthropic runs it directly and this execute() should never be invoked (see @katnor/llm\'s ServerToolBlock doc comment).';
+  "This is a server-side tool - Anthropic runs it directly and this execute() should never be invoked (see @katnor/llm's ServerToolBlock doc comment).";
 
 /**
  * Declares Anthropic's server-side `web_search`/`web_fetch` (PLAN.md 4.3:

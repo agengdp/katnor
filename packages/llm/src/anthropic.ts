@@ -168,7 +168,10 @@ function toAnthropicToolChoice(choice: ToolChoice | undefined): Anthropic.Beta.B
 }
 
 /** The concrete Anthropic tool `type` string for a `ProviderTool.serverType` tag, per model generation. */
-function resolveServerToolType(tag: 'web_search' | 'web_fetch', generation: ModelProfile['webToolGeneration']): string {
+function resolveServerToolType(
+  tag: 'web_search' | 'web_fetch',
+  generation: ModelProfile['webToolGeneration'],
+): string {
   if (tag === 'web_search') {
     return generation === 'dynamic' ? 'web_search_20260209' : 'web_search_20250305';
   }
@@ -178,7 +181,10 @@ function resolveServerToolType(tag: 'web_search' | 'web_fetch', generation: Mode
   return generation === 'dynamic' ? 'web_fetch_20260209' : 'web_fetch_20250910';
 }
 
-function toAnthropicTools(tools: ProviderTool[], profile: ModelProfile): Anthropic.Beta.BetaToolUnion[] {
+function toAnthropicTools(
+  tools: ProviderTool[],
+  profile: ModelProfile,
+): Anthropic.Beta.BetaToolUnion[] {
   return tools.map((tool) => {
     // A server-side tool (web_search/web_fetch - PLAN.md 4.3) is declared
     // by type+name alone; Anthropic supplies the real schema, so
@@ -232,14 +238,19 @@ function toAnthropicMessage(message: ProviderMessage): Anthropic.Beta.BetaMessag
         return block.raw as Anthropic.Beta.BetaContentBlockParam;
       default: {
         const exhaustive: never = block;
-        throw new Error(`toAnthropicMessage: unhandled content block ${JSON.stringify(exhaustive)}`);
+        throw new Error(
+          `toAnthropicMessage: unhandled content block ${JSON.stringify(exhaustive)}`,
+        );
       }
     }
   });
   // A message made only of dropped (signature-less) thinking blocks would
   // otherwise become empty content, which the API rejects - guard with a
   // single empty text block in that (rare) case.
-  return { role: message.role, content: content.length > 0 ? content : [{ type: 'text', text: '' }] };
+  return {
+    role: message.role,
+    content: content.length > 0 ? content : [{ type: 'text', text: '' }],
+  };
 }
 
 function fromAnthropicContent(blocks: Anthropic.Beta.BetaContentBlock[]): ContentBlock[] {
@@ -324,7 +335,10 @@ export class AnthropicProvider implements LLMProvider {
     if (profile.thinkingMode === 'adaptive') {
       if (input.thinkingDisplay === 'updated') {
         betas.push(THINKING_UPDATES_BETA);
-        thinking = { type: 'adaptive', display: 'updates' } as Anthropic.Beta.BetaThinkingConfigParam;
+        thinking = {
+          type: 'adaptive',
+          display: 'updates',
+        } as Anthropic.Beta.BetaThinkingConfigParam;
       } else if (input.thinkingDisplay === 'summarized') {
         thinking = { type: 'adaptive', display: 'summarized' };
       } else {
@@ -340,7 +354,11 @@ export class AnthropicProvider implements LLMProvider {
     if (profile.supportsEffort) {
       outputConfig.effort = input.effort;
     }
-    if (profile.supportsTaskBudget && input.taskBudgetTokens && input.taskBudgetTokens >= MIN_TASK_BUDGET_TOKENS) {
+    if (
+      profile.supportsTaskBudget &&
+      input.taskBudgetTokens &&
+      input.taskBudgetTokens >= MIN_TASK_BUDGET_TOKENS
+    ) {
       betas.push(TASK_BUDGET_BETA);
       outputConfig.task_budget = { type: 'tokens', total: input.taskBudgetTokens };
     }
@@ -362,7 +380,13 @@ export class AnthropicProvider implements LLMProvider {
     const requestBody = {
       model: input.model,
       max_tokens: input.maxTokens,
-      system: [{ type: 'text' as const, text: input.systemPrompt, cache_control: { type: 'ephemeral' as const } }],
+      system: [
+        {
+          type: 'text' as const,
+          text: input.systemPrompt,
+          cache_control: { type: 'ephemeral' as const },
+        },
+      ],
       tools: toAnthropicTools(input.tools, profile),
       tool_choice: toAnthropicToolChoice(input.toolChoice),
       messages: input.messages.map(toAnthropicMessage),
@@ -402,7 +426,8 @@ export class AnthropicProvider implements LLMProvider {
       stopReason: toStopReason(response.stop_reason),
       usage,
       costUsd: estimateCostUsd(input.model, usage),
-      refusalCategory: response.stop_reason === 'refusal' ? (response.stop_details?.category ?? null) : undefined,
+      refusalCategory:
+        response.stop_reason === 'refusal' ? (response.stop_details?.category ?? null) : undefined,
     };
   }
 }

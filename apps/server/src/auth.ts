@@ -81,7 +81,10 @@ export function verifySessionToken(token: string | undefined | null): string | n
 }
 
 /** Reads a single cookie value out of a raw `Cookie` request header. */
-export function readCookie(cookieHeader: string | null | undefined, name: string): string | undefined {
+export function readCookie(
+  cookieHeader: string | null | undefined,
+  name: string,
+): string | undefined {
   if (!cookieHeader) return undefined;
   for (const part of cookieHeader.split(';')) {
     const eqIndex = part.indexOf('=');
@@ -119,13 +122,7 @@ export function serializeSessionCookie(token: string): string {
 
 /** Serializes the `Set-Cookie` header value that clears the session cookie (logout). */
 export function serializeLogoutCookie(): string {
-  const attributes = [
-    `${SESSION_COOKIE_NAME}=`,
-    'Path=/',
-    'HttpOnly',
-    'SameSite=Lax',
-    'Max-Age=0',
-  ];
+  const attributes = [`${SESSION_COOKIE_NAME}=`, 'Path=/', 'HttpOnly', 'SameSite=Lax', 'Max-Age=0'];
   if (env.NODE_ENV === 'production') attributes.push('Secure');
   return attributes.join('; ');
 }

@@ -52,7 +52,9 @@ function buildSourceText(
     task.acceptance_criteria ? `Acceptance criteria: ${task.acceptance_criteria}` : null,
     `Agent: ${agent?.name ?? run.agent_id}${agent ? ` (${agent.title})` : ''}`,
     run.summary ? `Run summary: ${run.summary}` : null,
-    artifacts.length > 0 ? `Artifacts produced: ${artifacts.map((a) => `${a.kind} "${a.title}"`).join(', ')}` : null,
+    artifacts.length > 0
+      ? `Artifacts produced: ${artifacts.map((a) => `${a.kind} "${a.title}"`).join(', ')}`
+      : null,
   ];
   return parts.filter((part): part is string => Boolean(part)).join('\n');
 }
@@ -80,13 +82,22 @@ async function upsertNode(projectId: string, node: ExtractedNode): Promise<strin
   });
   await eventRepo.append({
     type: 'kg_node.upserted',
-    payload: { kg_node_id: created.id, project_id: projectId, node_type: created.type, name: created.name },
+    payload: {
+      kg_node_id: created.id,
+      project_id: projectId,
+      node_type: created.type,
+      name: created.name,
+    },
   });
   return created.id;
 }
 
 /** Creates or extends this decision's ADR page under wiki/decisions/ - see this module's doc comment for why decisions specifically get a page. */
-async function writeDecisionPage(projectId: string, node: ExtractedNode, evidence: KgEdgeEvidence): Promise<void> {
+async function writeDecisionPage(
+  projectId: string,
+  node: ExtractedNode,
+  evidence: KgEdgeEvidence,
+): Promise<void> {
   const relPath = `decisions/ADR-${slugify(node.name)}.md`;
   const existing = await wikiStorage.readPage(projectId, relPath);
   const timestamp = new Date().toISOString();
@@ -132,7 +143,9 @@ async function appendLogEntry(projectId: string, line: string): Promise<void> {
 }
 
 async function regenerateIndex(projectId: string, projectName: string): Promise<void> {
-  const pages = (await wikiStorage.listPages(projectId)).filter((p) => p !== 'index.md' && p !== 'log.md');
+  const pages = (await wikiStorage.listPages(projectId)).filter(
+    (p) => p !== 'index.md' && p !== 'log.md',
+  );
   const lines = [
     `# ${projectName} wiki`,
     '',
@@ -191,7 +204,13 @@ export async function ingestRun(runId: string): Promise<void> {
     const fromId = keyToId.get(edge.from);
     const toId = keyToId.get(edge.to);
     if (!fromId || !toId) continue;
-    await kgEdgeRepo.createIfMissing({ from_id: fromId, to_id: toId, type: edge.type, weight: null, evidence });
+    await kgEdgeRepo.createIfMissing({
+      from_id: fromId,
+      to_id: toId,
+      type: edge.type,
+      weight: null,
+      evidence,
+    });
   }
 
   const summaryLine = `${new Date().toISOString()} - ${agent?.name ?? run.agent_id} finished "${task.title}"${

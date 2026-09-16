@@ -36,7 +36,9 @@ const FALLBACK_RATE: ModelRate = { inputPerMTok: 5, outputPerMTok: 25 };
 function rateFor(model: string): ModelRate {
   const exact = MODEL_RATES[model];
   if (exact) return exact;
-  console.warn(`[llm/pricing] no pricing entry for model "${model}" - using the Opus-tier fallback rate`);
+  console.warn(
+    `[llm/pricing] no pricing entry for model "${model}" - using the Opus-tier fallback rate`,
+  );
   return FALLBACK_RATE;
 }
 

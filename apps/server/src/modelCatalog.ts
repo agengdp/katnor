@@ -41,7 +41,9 @@ export async function fetchAnthropicModelCatalog(apiKey: string): Promise<Anthro
 
   if (!response.ok) {
     const body = await response.text();
-    throw new Error(`Anthropic model catalog request failed with status ${response.status}: ${body}`);
+    throw new Error(
+      `Anthropic model catalog request failed with status ${response.status}: ${body}`,
+    );
   }
 
   const json = (await response.json()) as AnthropicModelsResponse;
@@ -49,7 +51,11 @@ export async function fetchAnthropicModelCatalog(apiKey: string): Promise<Anthro
 }
 
 async function getProviderRow(provider: ModelProvider) {
-  const [row] = await db.select().from(providerConfig).where(eq(providerConfig.provider, provider)).limit(1);
+  const [row] = await db
+    .select()
+    .from(providerConfig)
+    .where(eq(providerConfig.provider, provider))
+    .limit(1);
   return row;
 }
 
@@ -63,9 +69,13 @@ async function getProviderRow(provider: ModelProvider) {
  * configured on it - callers (`getCachedModelCatalog` below, and later the
  * settings UI) should make sure a key is set first.
  */
-export async function refreshModelCatalog(provider: ModelProvider): Promise<AnthropicModelSummary[]> {
+export async function refreshModelCatalog(
+  provider: ModelProvider,
+): Promise<AnthropicModelSummary[]> {
   if (provider !== 'anthropic') {
-    throw new Error(`refreshModelCatalog: no model catalog source implemented for provider "${provider}" yet`);
+    throw new Error(
+      `refreshModelCatalog: no model catalog source implemented for provider "${provider}" yet`,
+    );
   }
 
   const row = await getProviderRow(provider);
@@ -97,12 +107,15 @@ export async function refreshModelCatalog(provider: ModelProvider): Promise<Anth
  * six hours, and transparently calling `refreshModelCatalog` (re-fetching
  * from the provider and updating the cache) otherwise.
  */
-export async function getCachedModelCatalog(provider: ModelProvider): Promise<AnthropicModelSummary[]> {
+export async function getCachedModelCatalog(
+  provider: ModelProvider,
+): Promise<AnthropicModelSummary[]> {
   const row = await getProviderRow(provider);
 
   const cache = row?.model_catalog_cache as { models?: AnthropicModelSummary[] } | null | undefined;
   const cachedAt = row?.model_catalog_cached_at ?? null;
-  const isFresh = cache != null && cachedAt != null && Date.now() - cachedAt.getTime() < CACHE_TTL_MS;
+  const isFresh =
+    cache != null && cachedAt != null && Date.now() - cachedAt.getTime() < CACHE_TTL_MS;
 
   if (isFresh) {
     return cache.models ?? [];

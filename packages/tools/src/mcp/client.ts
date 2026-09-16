@@ -72,7 +72,10 @@ export class McpServerConnection {
     return response.tools.map((tool) => ({
       name: tool.name,
       description: tool.description ?? '',
-      inputSchema: (tool.inputSchema as Record<string, unknown> | undefined) ?? { type: 'object', properties: {} },
+      inputSchema: (tool.inputSchema as Record<string, unknown> | undefined) ?? {
+        type: 'object',
+        properties: {},
+      },
     }));
   }
 
@@ -84,7 +87,10 @@ export class McpServerConnection {
    * rather than dropped silently, so the model at least knows something
    * came back.
    */
-  async callTool(name: string, args: Record<string, unknown>): Promise<{ content: string; isError: boolean }> {
+  async callTool(
+    name: string,
+    args: Record<string, unknown>,
+  ): Promise<{ content: string; isError: boolean }> {
     await this.connect();
     if (!this.client) throw new Error(`McpServerConnection "${this.config.name}": not connected`);
 

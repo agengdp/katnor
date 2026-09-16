@@ -30,8 +30,6 @@ export const agent = pgTable('agent', {
   model_config: jsonb('model_config').$type<ModelConfig>().notNull(),
   tool_allowlist: jsonb('tool_allowlist').$type<string[]>().notNull().default([]),
   status: agentStatusEnum('status').notNull().default('active'),
-  budget_daily_usd: numeric('budget_daily_usd', { precision: 12, scale: 4 })
-    .notNull()
-    .default('0'),
+  budget_daily_usd: numeric('budget_daily_usd', { precision: 12, scale: 4 }).notNull().default('0'),
   is_system: boolean('is_system').notNull().default(false),
 });

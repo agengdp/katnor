@@ -40,7 +40,8 @@ async function runGit(cwd: string, args: string[]): Promise<{ stdout: string; st
 
 const INITIAL_INDEX_MD = (projectName: string) =>
   `# ${projectName} wiki\n\nA catalogue of this project's pages - the Librarian keeps this in sync as pages are added.\n`;
-const INITIAL_LOG_MD = '# Change log\n\nAppend-only. The Librarian adds one entry per wiki update.\n';
+const INITIAL_LOG_MD =
+  '# Change log\n\nAppend-only. The Librarian adds one entry per wiki update.\n';
 
 /**
  * Idempotent: creates the project's wiki directory and git repo if either
@@ -88,7 +89,11 @@ export async function readPage(projectId: string, relativePath: string): Promise
   }
 }
 
-export async function writePage(projectId: string, relativePath: string, content: string): Promise<void> {
+export async function writePage(
+  projectId: string,
+  relativePath: string,
+  content: string,
+): Promise<void> {
   const filePath = path.join(projectWikiDir(projectId), relativePath);
   await mkdir(path.dirname(filePath), { recursive: true });
   await writeFile(filePath, content, 'utf8');

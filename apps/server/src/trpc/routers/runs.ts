@@ -23,7 +23,10 @@ export const runsRouter = router({
   todaySpend: publicProcedure.query(async () => {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
-    const [spentUsd, settings] = await Promise.all([runRepo.sumCostSince(startOfToday), companyRepo.getSettings()]);
+    const [spentUsd, settings] = await Promise.all([
+      runRepo.sumCostSince(startOfToday),
+      companyRepo.getSettings(),
+    ]);
     return { spentUsd, budgetUsd: settings.budgets.company_daily_usd };
   }),
 
@@ -55,7 +58,9 @@ export const runsRouter = router({
         .map((row) => ({
           agentId: row.agentId,
           name: agentsById.get(row.agentId)?.name ?? row.agentId,
-          budgetUsd: agentsById.get(row.agentId) ? Number(agentsById.get(row.agentId)!.budget_daily_usd) : 0,
+          budgetUsd: agentsById.get(row.agentId)
+            ? Number(agentsById.get(row.agentId)!.budget_daily_usd)
+            : 0,
           totalUsd: row.totalUsd,
         }))
         .sort((a, b) => b.totalUsd - a.totalUsd),

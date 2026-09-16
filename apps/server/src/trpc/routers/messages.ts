@@ -7,7 +7,10 @@ export const messagesRouter = router({
   list: publicProcedure
     .input(z.object({ channel_id: z.string(), since_message_id: z.string().optional() }))
     .query(({ input }) =>
-      messageRepo.list(input.channel_id, input.since_message_id ? { after_id: input.since_message_id } : {}),
+      messageRepo.list(
+        input.channel_id,
+        input.since_message_id ? { after_id: input.since_message_id } : {},
+      ),
     ),
 
   /**

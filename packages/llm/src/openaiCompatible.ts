@@ -169,7 +169,8 @@ function toOpenAiMessages(messages: ProviderMessage[]): OpenAiMessage[] {
   for (const message of messages) {
     if (message.role === 'user') {
       const toolResults = message.content.filter(
-        (block): block is Extract<ContentBlock, { type: 'tool_result' }> => block.type === 'tool_result',
+        (block): block is Extract<ContentBlock, { type: 'tool_result' }> =>
+          block.type === 'tool_result',
       );
       for (const block of toolResults) {
         result.push({ role: 'tool', tool_call_id: block.toolUseId, content: block.content });
@@ -186,7 +187,9 @@ function toOpenAiMessages(messages: ProviderMessage[]): OpenAiMessage[] {
 
     // assistant
     const toolCalls: OpenAiToolCall[] = message.content
-      .filter((block): block is Extract<ContentBlock, { type: 'tool_use' }> => block.type === 'tool_use')
+      .filter(
+        (block): block is Extract<ContentBlock, { type: 'tool_use' }> => block.type === 'tool_use',
+      )
       .map((block) => ({
         id: block.id,
         type: 'function',
@@ -290,8 +293,13 @@ export class OpenAiCompatibleProvider implements LLMProvider {
     const requestBody: Record<string, unknown> = {
       model: input.model,
       max_tokens: input.maxTokens,
-      messages: [{ role: 'system', content: input.systemPrompt }, ...toOpenAiMessages(input.messages)],
-      ...(openAiTools.length > 0 ? { tools: openAiTools, tool_choice: toOpenAiToolChoice(input.toolChoice) } : {}),
+      messages: [
+        { role: 'system', content: input.systemPrompt },
+        ...toOpenAiMessages(input.messages),
+      ],
+      ...(openAiTools.length > 0
+        ? { tools: openAiTools, tool_choice: toOpenAiToolChoice(input.toolChoice) }
+        : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
     };
 
@@ -347,7 +355,12 @@ export class OpenAiCompatibleProvider implements LLMProvider {
             toolCall.function.arguments,
           );
         }
-        content.push({ type: 'tool_use', id: toolCall.id, name: toolCall.function.name, input: parsedInput });
+        content.push({
+          type: 'tool_use',
+          id: toolCall.id,
+          name: toolCall.function.name,
+          input: parsedInput,
+        });
       }
 
       const usage = {

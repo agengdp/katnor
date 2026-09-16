@@ -8,7 +8,9 @@ import type PgBoss from 'pg-boss';
  * Enqueued by @katnor/agents' runExecutor.ts on every successful run that
  * has a task, per PLAN.md §4.4/§4.5.
  */
-export async function librarianIngest(jobs: PgBoss.Job<{ runId: string }>[]): Promise<{ ok: true }> {
+export async function librarianIngest(
+  jobs: PgBoss.Job<{ runId: string }>[],
+): Promise<{ ok: true }> {
   for (const job of jobs) {
     try {
       await ingestRun(job.data.runId);

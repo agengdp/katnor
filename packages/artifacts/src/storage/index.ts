@@ -8,7 +8,10 @@ let cached: StorageBackend | undefined;
 /** The one storage backend for the process, chosen by ARTIFACT_STORAGE (default "local"). */
 export function getStorage(): StorageBackend {
   if (cached) return cached;
-  cached = getStorageMode() === 's3' ? new S3ArtifactStorage(getS3Config()) : new LocalFsStorage(getLocalStorageDir());
+  cached =
+    getStorageMode() === 's3'
+      ? new S3ArtifactStorage(getS3Config())
+      : new LocalFsStorage(getLocalStorageDir());
   return cached;
 }
 

@@ -8,10 +8,7 @@ export type CreateApprovalInput = Omit<
   typeof approval.$inferInsert,
   'id' | 'created_at' | 'updated_at' | 'status' | 'decided_by' | 'decided_at'
 >;
-export type DecideApprovalInput = Pick<
-  typeof approval.$inferInsert,
-  'status' | 'decided_by'
-> & {
+export type DecideApprovalInput = Pick<typeof approval.$inferInsert, 'status' | 'decided_by'> & {
   /** Merged into the existing `payload` (e.g. adding `answer` to a question) rather than replacing it. */
   payloadPatch?: Record<string, unknown>;
 };
@@ -32,9 +29,15 @@ export async function getById(id: string): Promise<ApprovalRow | undefined> {
   return row;
 }
 
-export async function list(status?: (typeof approval.$inferSelect)['status']): Promise<ApprovalRow[]> {
+export async function list(
+  status?: (typeof approval.$inferSelect)['status'],
+): Promise<ApprovalRow[]> {
   if (status !== undefined) {
-    return db.select().from(approval).where(eq(approval.status, status)).orderBy(desc(approval.created_at));
+    return db
+      .select()
+      .from(approval)
+      .where(eq(approval.status, status))
+      .orderBy(desc(approval.created_at));
   }
   return db.select().from(approval).orderBy(desc(approval.created_at));
 }
@@ -46,7 +49,10 @@ export async function list(status?: (typeof approval.$inferSelect)['status']): P
  * and add `answer`, not replace the whole payload with just `{answer}`.
  * Returns `undefined` if `id` doesn't exist.
  */
-export async function decide(id: string, input: DecideApprovalInput): Promise<ApprovalRow | undefined> {
+export async function decide(
+  id: string,
+  input: DecideApprovalInput,
+): Promise<ApprovalRow | undefined> {
   const existing = await getById(id);
   if (!existing) return undefined;
 

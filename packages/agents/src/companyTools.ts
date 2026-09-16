@@ -1,7 +1,16 @@
 import type { ArtifactKind, AskHumanPayload, TaskPriority } from '@katnor/core';
 import { ARTIFACT_KINDS, DEFAULT_BOARD_COLUMNS, TASK_PRIORITIES } from '@katnor/core';
 import { saveArtifact } from '@katnor/artifacts';
-import { agentRepo, approvalRepo, artifactRepo, channelRepo, eventRepo, messageRepo, projectRepo, taskRepo } from '@katnor/db';
+import {
+  agentRepo,
+  approvalRepo,
+  artifactRepo,
+  channelRepo,
+  eventRepo,
+  messageRepo,
+  projectRepo,
+  taskRepo,
+} from '@katnor/db';
 import { answerWithCitations, searchKnowledge } from '@katnor/knowledge';
 import type { ToolDefinition } from '@katnor/tools';
 import type { AgentToolContext } from './context.js';
@@ -45,7 +54,8 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
         mentions: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Agent ids to @mention in a channel message (ignored for a DM - the recipient always wakes).',
+          description:
+            'Agent ids to @mention in a channel message (ignored for a DM - the recipient always wakes).',
         },
       },
       required: ['target_type', 'target', 'text'],
@@ -79,7 +89,10 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       type: 'object',
       properties: {
         channel_id: { type: 'string' },
-        since_message_id: { type: 'string', description: 'Only messages posted after this message id.' },
+        since_message_id: {
+          type: 'string',
+          description: 'Only messages posted after this message id.',
+        },
       },
       required: ['channel_id'],
       additionalProperties: false,
@@ -92,13 +105,18 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       const sinceId = str(input, 'since_message_id');
       const rows = await messageRepo.list(channelId, sinceId ? { after_id: sinceId } : {});
       if (rows.length === 0) return { content: '(no messages)' };
-      return { content: rows.map((row) => `[${row.id}] ${row.author_type}:${row.author_id}: ${row.content}`).join('\n') };
+      return {
+        content: rows
+          .map((row) => `[${row.id}] ${row.author_type}:${row.author_id}: ${row.content}`)
+          .join('\n'),
+      };
     },
   },
 
   {
     name: 'ask_colleague',
-    description: "DM a colleague a question. They'll be woken up; you'll be re-triggered if they reply here.",
+    description:
+      "DM a colleague a question. They'll be woken up; you'll be re-triggered if they reply here.",
     inputSchema: {
       type: 'object',
       properties: {
@@ -138,7 +156,11 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       type: 'object',
       properties: {
         question: { type: 'string' },
-        options: { type: 'array', items: { type: 'string' }, description: 'Optional multiple-choice options.' },
+        options: {
+          type: 'array',
+          items: { type: 'string' },
+          description: 'Optional multiple-choice options.',
+        },
       },
       required: ['question'],
       additionalProperties: false,
@@ -149,7 +171,10 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
         return { content: 'ask_human requires question.', isError: true };
       }
       const options = strArray(input, 'options');
-      const payload: AskHumanPayload = { question, options: options.length > 0 ? options : undefined };
+      const payload: AskHumanPayload = {
+        question,
+        options: options.length > 0 ? options : undefined,
+      };
       const created = await approvalRepo.create({ run_id: ctx.run.id, kind: 'question', payload });
       await eventRepo.append({
         type: 'approval.requested',
@@ -164,7 +189,8 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
 
   {
     name: 'create_project',
-    description: 'Create a new project - a board, a channel, and a wiki. Do this before delegating any tasks.',
+    description:
+      'Create a new project - a board, a channel, and a wiki. Do this before delegating any tasks.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -212,7 +238,8 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
 
   {
     name: 'delegate_task',
-    description: 'Create a task in a project and assign it to a colleague, with a brief posted in its thread.',
+    description:
+      'Create a task in a project and assign it to a colleague, with a brief posted in its thread.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -231,7 +258,10 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       const assigneeId = str(input, 'assignee_id');
       const title = str(input, 'title');
       if (!projectId || !assigneeId || !title) {
-        return { content: 'delegate_task requires project_id, assignee_id, and title.', isError: true };
+        return {
+          content: 'delegate_task requires project_id, assignee_id, and title.',
+          isError: true,
+        };
       }
       const project = await projectRepo.getById(projectId);
       if (!project) {
@@ -243,7 +273,9 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       }
 
       const priorityInput = str(input, 'priority');
-      const priority: TaskPriority = (TASK_PRIORITIES as readonly string[]).includes(priorityInput ?? '')
+      const priority: TaskPriority = (TASK_PRIORITIES as readonly string[]).includes(
+        priorityInput ?? '',
+      )
         ? (priorityInput as TaskPriority)
         : 'medium';
 
@@ -342,27 +374,37 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       // PLAN.md 4.7: "moving a card to Todo with an assignee triggers a
       // run" - generalized here to also cover a fresh (re)assignment, so
       // dragging a card onto someone's name wakes them the same way.
-      if (updated.assignee_id && ((status === 'todo') || reassigning)) {
-        await triggerRun(ctx.boss, { agentId: updated.assignee_id, taskId: updated.id, trigger: 'task' });
+      if (updated.assignee_id && (status === 'todo' || reassigning)) {
+        await triggerRun(ctx.boss, {
+          agentId: updated.assignee_id,
+          taskId: updated.id,
+          trigger: 'task',
+        });
       }
 
-      return { content: `Updated task "${updated.id}" (status: ${updated.status}, assignee: ${updated.assignee_id ?? 'none'}).` };
+      return {
+        content: `Updated task "${updated.id}" (status: ${updated.status}, assignee: ${updated.assignee_id ?? 'none'}).`,
+      };
     },
   },
 
   {
     name: 'save_artifact',
     description:
-      'Save a file, diff, PR link, doc, image, or report as an artifact linked to this run\'s task/project - it shows up in the dashboard\'s Artifacts view and on the task card.',
+      "Save a file, diff, PR link, doc, image, or report as an artifact linked to this run's task/project - it shows up in the dashboard's Artifacts view and on the task card.",
     inputSchema: {
       type: 'object',
       properties: {
         kind: { type: 'string', enum: [...ARTIFACT_KINDS] },
         title: { type: 'string' },
-        content: { type: 'string', description: 'Text content - e.g. file contents, a diff, a PR/design URL, a report.' },
+        content: {
+          type: 'string',
+          description: 'Text content - e.g. file contents, a diff, a PR/design URL, a report.',
+        },
         artifact_group_id: {
           type: 'string',
-          description: 'Set to add a new version to an existing artifact instead of starting a new one.',
+          description:
+            'Set to add a new version to an existing artifact instead of starting a new one.',
         },
       },
       required: ['kind', 'title', 'content'],
@@ -393,13 +435,17 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
 
   {
     name: 'request_review',
-    description: 'Ask a colleague to review an artifact you produced (e.g. a PR or a doc) - DMs them with it attached.',
+    description:
+      'Ask a colleague to review an artifact you produced (e.g. a PR or a doc) - DMs them with it attached.',
     inputSchema: {
       type: 'object',
       properties: {
         agent_id: { type: 'string' },
         artifact_id: { type: 'string' },
-        note: { type: 'string', description: 'What you want reviewed and any context - defaults to a generic prompt.' },
+        note: {
+          type: 'string',
+          description: 'What you want reviewed and any context - defaults to a generic prompt.',
+        },
       },
       required: ['agent_id', 'artifact_id'],
       additionalProperties: false,
@@ -410,7 +456,10 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       if (!agentId || !artifactId) {
         return { content: 'request_review requires agent_id and artifact_id.', isError: true };
       }
-      const [colleague, artifact] = await Promise.all([agentRepo.getById(agentId), artifactRepo.getById(artifactId)]);
+      const [colleague, artifact] = await Promise.all([
+        agentRepo.getById(agentId),
+        artifactRepo.getById(artifactId),
+      ]);
       if (!colleague) {
         return { content: `No agent "${agentId}".`, isError: true };
       }
@@ -428,7 +477,9 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
         mentions: [agentId],
         attachments: [{ artifact_id: artifact.id }],
       });
-      return { content: `Sent review request for "${artifact.title}" to ${colleague.name} (message ${created.id}).` };
+      return {
+        content: `Sent review request for "${artifact.title}" to ${colleague.name} (message ${created.id}).`,
+      };
     },
   },
 
@@ -448,15 +499,21 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
         return { content: 'search_knowledge requires query.', isError: true };
       }
       if (!ctx.project) {
-        return { content: 'search_knowledge requires a project - this run has no task/project context.', isError: true };
+        return {
+          content: 'search_knowledge requires a project - this run has no task/project context.',
+          isError: true,
+        };
       }
       const hits = await searchKnowledge(ctx.project.id, query);
       if (hits.length === 0) {
-        return { content: 'No results in this project\'s wiki or knowledge graph for that yet.' };
+        return { content: "No results in this project's wiki or knowledge graph for that yet." };
       }
       return {
         content: hits
-          .map((hit) => `[${hit.kind}:${hit.id}] ${hit.title}${hit.snippet ? ` - ${hit.snippet}` : ''} (score ${hit.score.toFixed(2)})`)
+          .map(
+            (hit) =>
+              `[${hit.kind}:${hit.id}] ${hit.title}${hit.snippet ? ` - ${hit.snippet}` : ''} (score ${hit.score.toFixed(2)})`,
+          )
           .join('\n'),
       };
     },
@@ -464,7 +521,8 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
 
   {
     name: 'ask_wiki',
-    description: "Ask a question and get a cited answer from this project's wiki and knowledge graph.",
+    description:
+      "Ask a question and get a cited answer from this project's wiki and knowledge graph.",
     inputSchema: {
       type: 'object',
       properties: { question: { type: 'string' } },
@@ -477,7 +535,10 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
         return { content: 'ask_wiki requires question.', isError: true };
       }
       if (!ctx.project) {
-        return { content: 'ask_wiki requires a project - this run has no task/project context.', isError: true };
+        return {
+          content: 'ask_wiki requires a project - this run has no task/project context.',
+          isError: true,
+        };
       }
       const result = await answerWithCitations(ctx.project.id, question);
       return { content: result.answer };

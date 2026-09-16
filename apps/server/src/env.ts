@@ -22,7 +22,10 @@ function emptyToUndefined(value: unknown): unknown {
 }
 
 const envSchema = z.object({
-  DATABASE_URL: z.preprocess(emptyToUndefined, z.string({ required_error: 'DATABASE_URL is required' })),
+  DATABASE_URL: z.preprocess(
+    emptyToUndefined,
+    z.string({ required_error: 'DATABASE_URL is required' }),
+  ),
   SERVER_PORT: z.preprocess(emptyToUndefined, z.coerce.number().int().positive().default(3001)),
   SESSION_SECRET: z.preprocess(
     emptyToUndefined,
@@ -41,13 +44,18 @@ const envSchema = z.object({
   // Not part of .env.example - read directly because it's the standard
   // Node convention (and controls the session cookie's `Secure` flag, see
   // src/auth.ts). Defaults to "development" when unset, same as Node itself.
-  NODE_ENV: z.preprocess(emptyToUndefined, z.enum(['development', 'production', 'test']).default('development')),
+  NODE_ENV: z.preprocess(
+    emptyToUndefined,
+    z.enum(['development', 'production', 'test']).default('development'),
+  ),
 });
 
 function loadEnv() {
   const parsed = envSchema.safeParse(process.env);
   if (!parsed.success) {
-    const issues = parsed.error.issues.map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`).join('\n');
+    const issues = parsed.error.issues
+      .map((issue) => `  - ${issue.path.join('.')}: ${issue.message}`)
+      .join('\n');
     throw new Error(
       `Invalid environment configuration for @katnor/server:\n${issues}\n` +
         'Copy .env.example to .env at the repo root and fill in the missing values.',

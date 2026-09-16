@@ -9,7 +9,9 @@ export const tasksRouter = router({
     .input(z.object({ project_id: z.string().optional() }))
     .query(({ input }) => taskRepo.list(input)),
 
-  getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => taskRepo.getById(input.id)),
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input }) => taskRepo.getById(input.id)),
 
   create: protectedProcedure
     .input(
@@ -77,7 +79,11 @@ export const tasksRouter = router({
       });
 
       if (updated.assignee_id && (patch.status === 'todo' || reassigning)) {
-        await triggerRun(ctx.boss, { agentId: updated.assignee_id, taskId: updated.id, trigger: 'task' });
+        await triggerRun(ctx.boss, {
+          agentId: updated.assignee_id,
+          taskId: updated.id,
+          trigger: 'task',
+        });
       }
 
       return updated;

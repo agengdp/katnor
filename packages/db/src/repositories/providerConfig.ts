@@ -13,7 +13,13 @@ export type ProviderConfigRow = typeof providerConfig.$inferSelect;
  * resolve a company-wide base URL / encrypted API key at call time, rather
  * than each caller re-querying `db`/`providerConfig` directly.
  */
-export async function getByProvider(provider: ModelProvider): Promise<ProviderConfigRow | undefined> {
-  const [row] = await db.select().from(providerConfig).where(eq(providerConfig.provider, provider)).limit(1);
+export async function getByProvider(
+  provider: ModelProvider,
+): Promise<ProviderConfigRow | undefined> {
+  const [row] = await db
+    .select()
+    .from(providerConfig)
+    .where(eq(providerConfig.provider, provider))
+    .limit(1);
   return row;
 }

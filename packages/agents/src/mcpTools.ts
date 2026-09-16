@@ -33,7 +33,9 @@ async function resolveEnv(envSecretRefs: string[]): Promise<Record<string, strin
   for (const name of envSecretRefs) {
     const row = await secretRepo.getByName(name);
     if (!row) {
-      console.error(`[mcpTools] secret "${name}" referenced by a tool_config but not found - skipping`);
+      console.error(
+        `[mcpTools] secret "${name}" referenced by a tool_config but not found - skipping`,
+      );
       continue;
     }
     env[name] = decryptSecret(row.value_encrypted);
@@ -65,7 +67,9 @@ function splitCommand(command: string): { command: string; args: string[] } {
  * from each server) so they can't live in that static, module-level
  * registry the way company/org/work tools do.
  */
-export async function loadAgentMcpTools(toolAllowlist: string[]): Promise<ToolDefinition<AgentToolContext>[]> {
+export async function loadAgentMcpTools(
+  toolAllowlist: string[],
+): Promise<ToolDefinition<AgentToolContext>[]> {
   const allowedServers = new Set(serverNamesFromAllowlist(toolAllowlist));
   if (allowedServers.size === 0) return [];
 

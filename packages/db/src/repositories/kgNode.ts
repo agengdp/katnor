@@ -4,7 +4,10 @@ import { kgNode } from '../schema/index.js';
 import { ulid } from '../ulid.js';
 
 export type KgNodeRow = typeof kgNode.$inferSelect;
-export type CreateKgNodeInput = Omit<typeof kgNode.$inferInsert, 'id' | 'created_at' | 'updated_at'>;
+export type CreateKgNodeInput = Omit<
+  typeof kgNode.$inferInsert,
+  'id' | 'created_at' | 'updated_at'
+>;
 export type UpdateKgNodeInput = Partial<Omit<typeof kgNode.$inferInsert, 'id' | 'created_at'>>;
 
 export async function create(input: CreateKgNodeInput): Promise<KgNodeRow> {
@@ -27,7 +30,8 @@ export async function getByName(
   type: string,
   name: string,
 ): Promise<KgNodeRow | undefined> {
-  const projectCondition = projectId === null ? sql`${kgNode.project_id} is null` : eq(kgNode.project_id, projectId);
+  const projectCondition =
+    projectId === null ? sql`${kgNode.project_id} is null` : eq(kgNode.project_id, projectId);
   const [row] = await db
     .select()
     .from(kgNode)
@@ -53,7 +57,11 @@ export interface ListKgNodesFilter {
 export async function list(filter: ListKgNodesFilter = {}): Promise<KgNodeRow[]> {
   const conditions = [];
   if (filter.project_id !== undefined) {
-    conditions.push(filter.project_id === null ? sql`${kgNode.project_id} is null` : eq(kgNode.project_id, filter.project_id));
+    conditions.push(
+      filter.project_id === null
+        ? sql`${kgNode.project_id} is null`
+        : eq(kgNode.project_id, filter.project_id),
+    );
   }
   if (filter.type !== undefined) conditions.push(eq(kgNode.type, filter.type));
 
@@ -116,7 +124,11 @@ export async function searchByKeyword(
   const pattern = `%${query}%`;
   const conditions = [sql`(${kgNode.name} ilike ${pattern} or ${kgNode.summary} ilike ${pattern})`];
   if (opts.projectId !== undefined) {
-    conditions.push(opts.projectId === null ? sql`${kgNode.project_id} is null` : eq(kgNode.project_id, opts.projectId));
+    conditions.push(
+      opts.projectId === null
+        ? sql`${kgNode.project_id} is null`
+        : eq(kgNode.project_id, opts.projectId),
+    );
   }
   return db
     .select()

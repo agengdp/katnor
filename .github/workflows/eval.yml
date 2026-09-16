@@ -10,14 +10,14 @@ name: Eval
 on:
   pull_request:
     branches:
-      - "**"
+      - '**'
     paths:
-      - "packages/agents/**"
-      - "packages/llm/**"
-      - "packages/core/src/schemas/**"
-      - "packages/tools/**"
-      - "packages/eval/**"
-      - ".github/workflows/eval.yml"
+      - 'packages/agents/**'
+      - 'packages/llm/**'
+      - 'packages/core/src/schemas/**'
+      - 'packages/tools/**'
+      - 'packages/eval/**'
+      - '.github/workflows/eval.yml'
   workflow_dispatch: {}
 
 jobs:

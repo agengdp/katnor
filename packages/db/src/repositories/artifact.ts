@@ -68,7 +68,11 @@ export async function getById(id: string): Promise<ArtifactRow | undefined> {
 
 /** Looks an artifact up by its storage key - apps/server's `/artifacts/raw/:key` route uses this to resolve the right `mime` for the response header. */
 export async function getByStorageKey(storageKey: string): Promise<ArtifactRow | undefined> {
-  const [row] = await db.select().from(artifact).where(eq(artifact.storage_key, storageKey)).limit(1);
+  const [row] = await db
+    .select()
+    .from(artifact)
+    .where(eq(artifact.storage_key, storageKey))
+    .limit(1);
   return row;
 }
 

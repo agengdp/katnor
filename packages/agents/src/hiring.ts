@@ -1,4 +1,9 @@
-import type { HireApprovalPayload, ModelEffort, ModelProvider, ThinkingDisplayMode } from '@katnor/core';
+import type {
+  HireApprovalPayload,
+  ModelEffort,
+  ModelProvider,
+  ThinkingDisplayMode,
+} from '@katnor/core';
 import { agentRepo, eventRepo } from '@katnor/db';
 
 /**

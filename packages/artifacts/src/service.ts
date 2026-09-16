@@ -28,7 +28,8 @@ export async function saveArtifact(
   input: SaveArtifactInput,
 ): Promise<Awaited<ReturnType<typeof artifactRepo.create>>> {
   const storage = getStorage();
-  const body = typeof input.content === 'string' ? Buffer.from(input.content, 'utf8') : input.content;
+  const body =
+    typeof input.content === 'string' ? Buffer.from(input.content, 'utf8') : input.content;
   const key = `${ulid()}-${slugify(input.title)}`;
 
   await storage.put({ key, body, contentType: input.contentType });

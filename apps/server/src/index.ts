@@ -98,7 +98,9 @@ const httpServer = serve(
     port: env.SERVER_PORT,
   },
   (info) => {
-    console.log(`[server] katnor server listening on http://localhost:${info.port} (tRPC at /trpc, WS at /ws/events)`);
+    console.log(
+      `[server] katnor server listening on http://localhost:${info.port} (tRPC at /trpc, WS at /ws/events)`,
+    );
   },
 );
 

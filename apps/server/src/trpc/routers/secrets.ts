@@ -24,5 +24,7 @@ export const secretsRouter = router({
       return { name: created.name, updatedAt: created.updated_at };
     }),
 
-  remove: protectedProcedure.input(z.object({ name: z.string().min(1) })).mutation(({ input }) => secretRepo.remove(input.name)),
+  remove: protectedProcedure
+    .input(z.object({ name: z.string().min(1) }))
+    .mutation(({ input }) => secretRepo.remove(input.name)),
 });

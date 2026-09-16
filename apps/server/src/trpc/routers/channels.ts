@@ -7,7 +7,9 @@ export const channelsRouter = router({
     .input(z.object({ project_id: z.string().optional(), team_id: z.string().optional() }))
     .query(({ input }) => channelRepo.list(input)),
 
-  getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => channelRepo.getById(input.id)),
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input }) => channelRepo.getById(input.id)),
 
   getGeneral: publicProcedure.query(() => channelRepo.getOrCreateGeneral()),
 

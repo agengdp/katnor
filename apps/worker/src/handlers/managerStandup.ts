@@ -9,10 +9,14 @@ import type PgBoss from 'pg-boss';
  * project" - same fan-out convention as wiki-lint's handler.
  */
 export function createManagerStandupHandler(boss: PgBoss) {
-  return async function managerStandup(jobs: PgBoss.Job<{ projectId?: string }>[]): Promise<{ ok: true }> {
+  return async function managerStandup(
+    jobs: PgBoss.Job<{ projectId?: string }>[],
+  ): Promise<{ ok: true }> {
     for (const job of jobs) {
       try {
-        const projectIds = job.data.projectId ? [job.data.projectId] : (await projectRepo.list()).map((p) => p.id);
+        const projectIds = job.data.projectId
+          ? [job.data.projectId]
+          : (await projectRepo.list()).map((p) => p.id);
         for (const projectId of projectIds) {
           await runManagerStandup(projectId, boss);
         }

@@ -6,9 +6,18 @@ import { ulid } from '../ulid.js';
 export type RunRow = typeof run.$inferSelect;
 export type CreateRunInput = Omit<
   typeof run.$inferInsert,
-  'id' | 'created_at' | 'updated_at' | 'started_at' | 'status' | 'tokens_in' | 'tokens_out' | 'cost_usd'
+  | 'id'
+  | 'created_at'
+  | 'updated_at'
+  | 'started_at'
+  | 'status'
+  | 'tokens_in'
+  | 'tokens_out'
+  | 'cost_usd'
 >;
-export type UpdateRunInput = Partial<Omit<typeof run.$inferInsert, 'id' | 'created_at' | 'agent_id'>>;
+export type UpdateRunInput = Partial<
+  Omit<typeof run.$inferInsert, 'id' | 'created_at' | 'agent_id'>
+>;
 
 export interface ListRunsFilter {
   agent_id?: string;
@@ -83,7 +92,9 @@ export async function sumCostSince(since: Date, filter: SumCostFilter = {}): Pro
   const conditions = [gte(run.started_at, since)];
   if (filter.agentId !== undefined) conditions.push(eq(run.agent_id, filter.agentId));
   if (filter.projectId !== undefined) {
-    conditions.push(sql`${run.task_id} in (select id from task where project_id = ${filter.projectId})`);
+    conditions.push(
+      sql`${run.task_id} in (select id from task where project_id = ${filter.projectId})`,
+    );
   }
   const [row] = await db
     .select({ total: sql<string>`coalesce(sum(${run.cost_usd}), 0)` })

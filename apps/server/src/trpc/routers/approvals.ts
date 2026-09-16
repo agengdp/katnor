@@ -15,7 +15,9 @@ export const approvalsRouter = router({
     .input(z.object({ status: z.enum(APPROVAL_STATUSES).optional() }))
     .query(({ input }) => approvalRepo.list(input.status)),
 
-  getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => approvalRepo.getById(input.id)),
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input }) => approvalRepo.getById(input.id)),
 
   /**
    * Approves or rejects a pending approval/question, performs whatever
@@ -79,7 +81,12 @@ export const approvalsRouter = router({
       });
       await eventRepo.append({
         type: 'approval.decided',
-        payload: { approval_id: existing.id, kind: existing.kind, status: input.decision, decided_by: 'human' },
+        payload: {
+          approval_id: existing.id,
+          kind: existing.kind,
+          status: input.decision,
+          decided_by: 'human',
+        },
       });
 
       const originatingRun = await runRepo.getById(existing.run_id);

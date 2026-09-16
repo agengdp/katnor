@@ -73,52 +73,54 @@ export const settingsRouter = router({
     return rows.map(toPublicProvider);
   }),
 
-  upsertProvider: protectedProcedure.input(upsertProviderInputSchema).mutation(async ({ ctx, input }) => {
-    const existingRows = await ctx.db.select().from(providerConfig);
-    const existing = existingRows.find((row) => row.provider === input.provider);
+  upsertProvider: protectedProcedure
+    .input(upsertProviderInputSchema)
+    .mutation(async ({ ctx, input }) => {
+      const existingRows = await ctx.db.select().from(providerConfig);
+      const existing = existingRows.find((row) => row.provider === input.provider);
 
-    const apiKeyEncrypted = input.apiKey !== undefined ? encryptSecret(input.apiKey) : undefined;
+      const apiKeyEncrypted = input.apiKey !== undefined ? encryptSecret(input.apiKey) : undefined;
 
-    if (existing) {
-      const [updated] = await ctx.db
-        .update(providerConfig)
-        .set({
-          enabled: input.enabled,
-          ...(input.baseUrl !== undefined ? { base_url: input.baseUrl } : {}),
-          ...(apiKeyEncrypted !== undefined ? { api_key_encrypted: apiKeyEncrypted } : {}),
-          ...(input.inputCostPerMtok !== undefined
-            ? { input_cost_per_mtok: toNumericColumn(input.inputCostPerMtok) }
-            : {}),
-          ...(input.outputCostPerMtok !== undefined
-            ? { output_cost_per_mtok: toNumericColumn(input.outputCostPerMtok) }
-            : {}),
-          updated_at: new Date(),
-        })
-        .where(eq(providerConfig.id, existing.id))
-        .returning();
-      if (!updated) {
-        throw new Error('upsertProvider: update returned no row');
+      if (existing) {
+        const [updated] = await ctx.db
+          .update(providerConfig)
+          .set({
+            enabled: input.enabled,
+            ...(input.baseUrl !== undefined ? { base_url: input.baseUrl } : {}),
+            ...(apiKeyEncrypted !== undefined ? { api_key_encrypted: apiKeyEncrypted } : {}),
+            ...(input.inputCostPerMtok !== undefined
+              ? { input_cost_per_mtok: toNumericColumn(input.inputCostPerMtok) }
+              : {}),
+            ...(input.outputCostPerMtok !== undefined
+              ? { output_cost_per_mtok: toNumericColumn(input.outputCostPerMtok) }
+              : {}),
+            updated_at: new Date(),
+          })
+          .where(eq(providerConfig.id, existing.id))
+          .returning();
+        if (!updated) {
+          throw new Error('upsertProvider: update returned no row');
+        }
+        return toPublicProvider(updated);
       }
-      return toPublicProvider(updated);
-    }
 
-    const [created] = await ctx.db
-      .insert(providerConfig)
-      .values({
-        id: ulid(),
-        provider: input.provider,
-        enabled: input.enabled,
-        base_url: input.baseUrl ?? null,
-        api_key_encrypted: apiKeyEncrypted ?? null,
-        input_cost_per_mtok: toNumericColumn(input.inputCostPerMtok ?? null),
-        output_cost_per_mtok: toNumericColumn(input.outputCostPerMtok ?? null),
-      })
-      .returning();
-    if (!created) {
-      throw new Error('upsertProvider: insert returned no row');
-    }
-    return toPublicProvider(created);
-  }),
+      const [created] = await ctx.db
+        .insert(providerConfig)
+        .values({
+          id: ulid(),
+          provider: input.provider,
+          enabled: input.enabled,
+          base_url: input.baseUrl ?? null,
+          api_key_encrypted: apiKeyEncrypted ?? null,
+          input_cost_per_mtok: toNumericColumn(input.inputCostPerMtok ?? null),
+          output_cost_per_mtok: toNumericColumn(input.outputCostPerMtok ?? null),
+        })
+        .returning();
+      if (!created) {
+        throw new Error('upsertProvider: insert returned no row');
+      }
+      return toPublicProvider(created);
+    }),
 
   /**
    * Budgets and approval policy (PLAN.md 4.9's Settings page, and Phase 5's
