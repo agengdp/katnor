@@ -38,3 +38,11 @@ jobs:
           echo "-----BEGIN PAYLOAD-----"
           cat /tmp/fmt.b64
           echo "-----END PAYLOAD-----"
+
+      # The log payload above is ~700 lines of base64; reproducing it
+      # byte-exact by hand is a corruption risk. Upload the raw patch as an
+      # artifact so it can be fetched intact instead.
+      - uses: actions/upload-artifact@v4
+        with:
+          name: fmt-patch
+          path: /tmp/fmt.diff
