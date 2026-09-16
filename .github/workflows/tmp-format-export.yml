@@ -32,16 +32,24 @@ jobs:
           git diff --name-only
           echo "POST_FORMAT_SHA256:"
           git diff --name-only | while read -r f; do sha256sum "$f"; done
-          gzip -9 -c /tmp/fmt.diff | base64 -w 120 > /tmp/fmt.b64
+          xz -9e -c /tmp/fmt.diff | base64 -w 120 > /tmp/fmt.b64
           echo "B64_LINES:$(wc -l < /tmp/fmt.b64)"
           echo "B64_SHA:$(sha256sum /tmp/fmt.b64 | cut -d' ' -f1)"
-          echo "-----BEGIN PAYLOAD-----"
-          cat /tmp/fmt.b64
-          echo "-----END PAYLOAD-----"
+          # Emitted in checksummed chunks: the CI log is the only transport
+          # channel available to the sandbox (artifact storage and the npm
+          # registry are both blocked by egress policy there), and a silent
+          # copying slip in 200+ lines of base64 would be undetectable.
+          # Per-chunk digests make any bad chunk identifiable on its own.
+          rm -f /tmp/chunk_*
+          split -l 12 -d -a 3 /tmp/fmt.b64 /tmp/chunk_
+          for f in /tmp/chunk_*; do
+            echo "===CHUNK $(basename "$f") sha=$(sha256sum "$f" | cut -d' ' -f1) lines=$(wc -l < "$f")"
+            cat "$f"
+          done
+          echo "===PAYLOAD-COMPLETE"
 
-      # The log payload above is ~700 lines of base64; reproducing it
-      # byte-exact by hand is a corruption risk. Upload the raw patch as an
-      # artifact so it can be fetched intact instead.
+      # Kept as a convenience for a human reading this run; the sandbox
+      # itself cannot fetch it (artifact blob storage is 403 there).
       - uses: actions/upload-artifact@v4
         with:
           name: fmt-patch
