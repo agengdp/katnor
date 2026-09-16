@@ -32,21 +32,14 @@ jobs:
           git diff --name-only
           echo "POST_FORMAT_SHA256:"
           git diff --name-only | while read -r f; do sha256sum "$f"; done
-          xz -9e -c /tmp/fmt.diff | base64 -w 120 > /tmp/fmt.b64
-          echo "B64_LINES:$(wc -l < /tmp/fmt.b64)"
-          echo "B64_SHA:$(sha256sum /tmp/fmt.b64 | cut -d' ' -f1)"
-          # Emitted in checksummed chunks: the CI log is the only transport
-          # channel available to the sandbox (artifact storage and the npm
-          # registry are both blocked by egress policy there), and a silent
-          # copying slip in 200+ lines of base64 would be undetectable.
-          # Per-chunk digests make any bad chunk identifiable on its own.
-          rm -f /tmp/chunk_*
-          split -l 12 -d -a 3 /tmp/fmt.b64 /tmp/chunk_
-          for f in /tmp/chunk_*; do
-            echo "===CHUNK $(basename "$f") sha=$(sha256sum "$f" | cut -d' ' -f1) lines=$(wc -l < "$f")"
-            cat "$f"
-          done
-          echo "===PAYLOAD-COMPLETE"
+          # Printed as a PLAIN unified diff, not a compressed blob: the CI
+          # log is the only transport channel that reaches the sandbox, and
+          # the patch that travels it should be readable and reviewable on
+          # the way through. `git apply` validates every context line on
+          # arrival, and the per-file digests above confirm the result.
+          echo "-----BEGIN PATCH-----"
+          cat /tmp/fmt.diff
+          echo "-----END PATCH-----"
 
       # Kept as a convenience for a human reading this run; the sandbox
       # itself cannot fetch it (artifact blob storage is 403 there).
