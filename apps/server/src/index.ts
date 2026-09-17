@@ -49,7 +49,13 @@ app.get('/artifacts/raw/:key', async (c) => {
   }
   const row = await artifactRepo.getByStorageKey(key);
   c.header('Content-Type', row?.mime ?? 'application/octet-stream');
-  return c.body(content);
+  // Handed over as a plain Uint8Array rather than as the Buffer
+  // `getStorage().get` returns. Node types Buffer as `Buffer<ArrayBufferLike>`,
+  // and since TypeScript 5.7 made ArrayBufferView generic that no longer
+  // satisfies Hono's BodyInit parameter - ArrayBufferLike also covers
+  // SharedArrayBuffer, which is not valid there. The bytes are unchanged; the
+  // conversion costs one copy, which beats casting the mismatch away.
+  return c.body(new Uint8Array(content));
 });
 
 /**
