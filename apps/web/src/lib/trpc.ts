@@ -46,8 +46,16 @@ export function trpc(init?: TRPCClientInit) {
 
   if (isBrowser && browserClient) return browserClient;
 
+  // `url` is a top-level option; `init` is the SvelteKit request context
+  // (its `url` is a URL object, which is why passing a string in there did
+  // not typecheck). Nesting the endpoint inside `init` meant it was never
+  // applied: with no init the client saw `{ url: '<string>' }` and read
+  // `.origin` off a string, and with an init the spread overwrote it. So
+  // the browser client never actually pointed at PUBLIC_SERVER_URL - the
+  // exact default the comment above says this avoids.
   const client = createTRPCClient<AppRouter>({
-    init: { url: trpcUrl, ...init },
+    url: trpcUrl,
+    init,
   });
 
   if (isBrowser) browserClient = client;

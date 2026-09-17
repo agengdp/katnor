@@ -173,6 +173,10 @@
   // synchronously here, so this effect re-fires on navigation).
   $effect(() => {
     const id = projectId;
+    // `$page.params.id` is typed `string | undefined`. The router only
+    // matches this route with the param present, so this should not happen -
+    // but skipping the load beats calling it with `undefined`.
+    if (!id) return;
     loadAll(id);
   });
 
@@ -280,11 +284,15 @@
     event.preventDefault();
     const title = newTitle.trim();
     if (!title) return;
+    // Narrows `$page.params.id` from `string | undefined`; tasks.create
+    // requires a project_id, so there is nothing sensible to send without it.
+    const id = projectId;
+    if (!id) return;
     creatingTask = true;
     createTaskError = null;
     try {
       await trpc().tasks.create.mutate({
-        project_id: projectId,
+        project_id: id,
         title,
         description: newDescription.trim(),
         acceptance_criteria: newAcceptanceCriteria.trim(),
