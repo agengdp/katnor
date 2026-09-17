@@ -181,8 +181,17 @@
   });
 
   async function refreshTasks() {
+    // Same narrowing as loadAll and createTask, and not just to satisfy the
+    // type: `tasks.list` takes an optional project_id, and taskRepo.list
+    // treats a missing one as "no filter" and returns every task in the
+    // database. An unfiltered call here would quietly repopulate this
+    // project's board with every other project's tasks. Notably this is
+    // reachable: the realtime subscription below calls refreshTasks for any
+    // task event that carries no project_id of its own.
+    const id = projectId;
+    if (!id) return;
     try {
-      const taskRows = await trpc().tasks.list.query({ project_id: projectId });
+      const taskRows = await trpc().tasks.list.query({ project_id: id });
       tasks = taskRows as unknown as TaskRow[];
       rebuildColumns();
     } catch (err) {
