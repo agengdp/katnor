@@ -1,0 +1,66 @@
+name: TEMP format commit
+
+# TEMPORARY - removed as soon as it has run once.
+#
+# The sandbox this branch is developed in cannot install
+# prettier-plugin-svelte: registry.npmjs.org returns 403 there under an
+# organization security policy. Without that plugin prettier cannot infer a
+# parser for .svelte at all ("No parser could be inferred"), so the repo's
+# 12 .svelte files cannot be formatted - or even checked - from there, and
+# `Format check` stays red on them. Every way of moving the formatting back
+# into the sandbox is also closed (artifact blob storage is 403; the CI log
+# is the only channel that reaches it).
+#
+# So this job does the write itself, on a runner that CAN install the
+# plugin, and commits the result. Explicitly authorized by the repository
+# owner for this one purpose.
+
+on:
+  push:
+    branches:
+      - claude/optimistic-albattani-mpbv2f
+
+permissions:
+  contents: write
+
+jobs:
+  format:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: claude/optimistic-albattani-mpbv2f
+
+      - uses: pnpm/action-setup@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - run: pnpm install
+
+      # No `|| true`: if a .svelte file fails to parse, fail loudly rather
+      # than committing a half-formatted tree.
+      - name: Format
+        run: pnpm exec prettier --write .
+
+      - name: Verify the tree is now clean
+        run: pnpm exec prettier --check .
+
+      - name: Commit and push
+        run: |
+          if git diff --quiet; then
+            echo "Nothing to format - tree was already clean."
+            exit 0
+          fi
+          echo "Formatted files:"
+          git diff --name-only
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit \
+            -m "chore: format Svelte files with prettier-plugin-svelte" \
+            -m "Produced by running prettier with the plugin on a runner, which can install it. The development sandbox for this branch cannot (npm registry 403 under an org security policy), and without the plugin prettier cannot infer a parser for .svelte files at all, so these could not be formatted there. Completes the repo-wide format pass started in a021c63." \
+            -m "Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>" \
+            -m "Claude-Session: https://claude.ai/code/session_01SzYhsFjbQVnuQoChdVjVTi"
+          git push origin HEAD:claude/optimistic-albattani-mpbv2f
