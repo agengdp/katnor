@@ -11,6 +11,18 @@ import { createContext } from './trpc/context.js';
 import { appRouter } from './trpc/router.js';
 import { startEventsWebSocketServer } from './ws.js';
 
+/**
+ * apps/web types its tRPC client with `import type { AppRouter } from
+ * '@katnor/server'` (apps/web/src/lib/trpc.ts), and this package's `types`
+ * entry is this file - so without this re-export that import resolves to
+ * nothing. `createTRPCClient<AppRouter>` then collapses into tRPC's
+ * built-in-collision error type (every reserved client method reported as
+ * colliding at once), and every `trpc().<router>.<procedure>` call in the
+ * web app fails to typecheck. Type-only, so it is erased at build time and
+ * none of this module's server-starting code follows the import.
+ */
+export type { AppRouter } from './trpc/router.js';
+
 const app = new Hono();
 
 // Permissive, credentialed CORS for the tRPC API: apps/web is a separate
