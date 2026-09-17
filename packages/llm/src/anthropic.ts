@@ -159,6 +159,35 @@ const THINKING_UPDATES_BETA = 'thinking-display-updates-2026-08-18';
 /** Anthropic requires a task budget of at least this many tokens. */
 const MIN_TASK_BUDGET_TOKENS = 20_000;
 
+/**
+ * The adaptive thinking config - `{ type: 'adaptive' }` - which is the
+ * current API shape for every model this adapter targets. It is declared
+ * here because @anthropic-ai/sdk 0.68.0's own `BetaThinkingConfigParam`
+ * still models only the older `enabled`/`disabled` pair, so assigning an
+ * adaptive config to it does not typecheck.
+ *
+ * The wire payload is what matters and it is correct: the SDK serializes
+ * `thinking` through to the request body untouched. Do NOT "fix" this by
+ * reverting to `{ type: 'enabled', budget_tokens: N }` - that form is
+ * rejected with a 400 on every model in resolveModelProfile's adaptive
+ * branch. Delete this type and use the SDK's own once the dependency is
+ * bumped to a release that knows about adaptive thinking.
+ */
+type AdaptiveThinkingConfig = {
+  type: 'adaptive';
+  display?: 'summarized' | 'updates';
+};
+
+/**
+ * `stop_details` is GA (Opus 4.7 and later) and is populated only when
+ * `stop_reason === 'refusal'`, but 0.68.0's `BetaMessage` predates the
+ * field. Same situation as `AdaptiveThinkingConfig` above: the field is
+ * present on the response at runtime, just absent from the pinned types.
+ */
+type WithStopDetails = {
+  stop_details?: { category?: string | null } | null;
+};
+
 /** Maps this system's provider-agnostic `ToolChoice` to Anthropic's `tool_choice` request field. */
 function toAnthropicToolChoice(choice: ToolChoice | undefined): Anthropic.Beta.BetaToolChoice {
   if (choice?.type === 'tool') {
@@ -331,14 +360,11 @@ export class AnthropicProvider implements LLMProvider {
     const profile = resolveModelProfile(input.model);
     const betas: string[] = [];
 
-    let thinking: Anthropic.Beta.BetaThinkingConfigParam | undefined;
+    let thinking: AdaptiveThinkingConfig | undefined;
     if (profile.thinkingMode === 'adaptive') {
       if (input.thinkingDisplay === 'updated') {
         betas.push(THINKING_UPDATES_BETA);
-        thinking = {
-          type: 'adaptive',
-          display: 'updates',
-        } as Anthropic.Beta.BetaThinkingConfigParam;
+        thinking = { type: 'adaptive', display: 'updates' };
       } else if (input.thinkingDisplay === 'summarized') {
         thinking = { type: 'adaptive', display: 'summarized' };
       } else {
@@ -390,7 +416,9 @@ export class AnthropicProvider implements LLMProvider {
       tools: toAnthropicTools(input.tools, profile),
       tool_choice: toAnthropicToolChoice(input.toolChoice),
       messages: input.messages.map(toAnthropicMessage),
-      ...(thinking ? { thinking } : {}),
+      ...(thinking
+        ? { thinking: thinking as unknown as Anthropic.Beta.BetaThinkingConfigParam }
+        : {}),
       ...(Object.keys(outputConfig).length > 0 ? { output_config: outputConfig } : {}),
       ...(fallbacks ? { fallbacks } : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
@@ -427,7 +455,9 @@ export class AnthropicProvider implements LLMProvider {
       usage,
       costUsd: estimateCostUsd(input.model, usage),
       refusalCategory:
-        response.stop_reason === 'refusal' ? (response.stop_details?.category ?? null) : undefined,
+        response.stop_reason === 'refusal'
+          ? ((response as WithStopDetails).stop_details?.category ?? null)
+          : undefined,
     };
   }
 }
