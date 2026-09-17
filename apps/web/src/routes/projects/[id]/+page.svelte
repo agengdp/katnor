@@ -127,7 +127,7 @@
       id: c.id,
       name: c.name,
       status: c.status,
-      tasks: tasks.filter((t) => t.status === c.status)
+      tasks: tasks.filter((t) => t.status === c.status),
     }));
     // "blocked" isn't one of the default columns - anything whose status
     // doesn't match a configured column (in practice, blocked tasks) lands
@@ -149,7 +149,7 @@
       const [proj, taskRows, agentRows] = await Promise.all([
         trpc().projects.getById.query({ id }),
         trpc().tasks.list.query({ project_id: id }),
-        trpc().agents.list.query()
+        trpc().agents.list.query(),
       ]);
       agents = agentRows as unknown as AgentRow[];
       if (!proj) {
@@ -289,7 +289,7 @@
         description: newDescription.trim(),
         acceptance_criteria: newAcceptanceCriteria.trim(),
         priority: newPriority,
-        assignee_id: newAssigneeId || null
+        assignee_id: newAssigneeId || null,
       });
       newTitle = '';
       newDescription = '';
@@ -313,16 +313,19 @@
   {#if loading}
     <p class="text-sm text-[var(--color-text-muted)]">Loading project…</p>
   {:else if loadError}
-    <div class="flex flex-col gap-2 rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm">
+    <div
+      class="flex flex-col gap-2 rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm"
+    >
       <p class="font-medium text-[var(--color-danger)]">Couldn't load this project</p>
       <p class="text-[var(--color-text-muted)]">{loadError}</p>
       <p class="text-[var(--color-text-muted)]">
-        apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong
-        place.
+        apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong place.
       </p>
     </div>
   {:else if notFound || !project}
-    <div class="flex flex-col gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
+    <div
+      class="flex flex-col gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm"
+    >
       <p class="font-medium">Project not found</p>
       <p class="text-[var(--color-text-muted)]">
         There's no project at this address - it may have been deleted, or the link might be wrong.
@@ -340,7 +343,9 @@
       <p class="text-sm text-[var(--color-danger)]">{actionError}</p>
     {/if}
 
-    <section class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+    <section
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+    >
       <h2 class="text-sm font-semibold">
         Add task <span class="font-normal text-[var(--color-text-muted)]">(goes to Backlog)</span>
       </h2>
@@ -458,20 +463,30 @@
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2 text-xs">
-                      <span class="rounded-full px-2 py-0.5 font-medium {priorityClasses(task.priority)}">
+                      <span
+                        class="rounded-full px-2 py-0.5 font-medium {priorityClasses(
+                          task.priority,
+                        )}"
+                      >
                         {priorityLabel(task.priority)}
                       </span>
-                      <span class="text-[var(--color-text-muted)]">{assigneeName(task.assignee_id)}</span>
+                      <span class="text-[var(--color-text-muted)]"
+                        >{assigneeName(task.assignee_id)}</span
+                      >
                     </div>
 
                     {#if expandedTaskId === task.id}
-                      <div class="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-2 text-xs text-[var(--color-text-muted)]">
+                      <div
+                        class="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-2 text-xs text-[var(--color-text-muted)]"
+                      >
                         <p>
                           <span class="font-medium text-[var(--color-text)]">Description:</span>
                           {task.description || 'No description.'}
                         </p>
                         <p>
-                          <span class="font-medium text-[var(--color-text)]">Acceptance criteria:</span>
+                          <span class="font-medium text-[var(--color-text)]"
+                            >Acceptance criteria:</span
+                          >
                           {task.acceptance_criteria || 'None.'}
                         </p>
                         {#if task.due_at}
@@ -519,7 +534,11 @@
                       <span class="shrink-0 text-[var(--color-text-muted)]">Assignee</span>
                       <select
                         value={task.assignee_id ?? ''}
-                        onchange={(e) => reassignTask(task.id, (e.currentTarget as HTMLSelectElement).value || null)}
+                        onchange={(e) =>
+                          reassignTask(
+                            task.id,
+                            (e.currentTarget as HTMLSelectElement).value || null,
+                          )}
                         class="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-1.5 py-1 text-xs text-[var(--color-text)]"
                       >
                         <option value="">Unassigned</option>

@@ -14,7 +14,7 @@
     initials,
     pointInRect,
     zones,
-    type Point
+    type Point,
   } from '$lib/office/layout';
 
   /**
@@ -101,8 +101,14 @@
 
   $effect(() => {
     const unsub = subscribeToEvents((event) => {
-      if (event.type === 'agent.hired' || event.type === 'agent.updated' || event.type === 'agent.fired') loadAgents();
-      if (event.type === 'approval.requested' || event.type === 'approval.decided') loadPendingCount();
+      if (
+        event.type === 'agent.hired' ||
+        event.type === 'agent.updated' ||
+        event.type === 'agent.fired'
+      )
+        loadAgents();
+      if (event.type === 'approval.requested' || event.type === 'approval.decided')
+        loadPendingCount();
       if (event.type === 'run.finished') loadSpend();
     });
     return unsub;
@@ -111,7 +117,9 @@
   // ─── Layout ─────────────────────────────────────────────────────────────
 
   const ceo = $derived(agents.find((a) => a.is_system) ?? null);
-  const deskAgents = $derived(agents.filter((a) => !a.is_system).sort((a, b) => a.id.localeCompare(b.id)));
+  const deskAgents = $derived(
+    agents.filter((a) => !a.is_system).sort((a, b) => a.id.localeCompare(b.id)),
+  );
   const deskByAgentId = $derived.by(() => {
     const positions = deskPositions(deskAgents.length);
     const map = new Map<string, Point>();
@@ -155,7 +163,14 @@
     return pos;
   }
 
-  function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, w: number, h: number, r: number): void {
+  function roundRect(
+    ctx: CanvasRenderingContext2D,
+    x: number,
+    y: number,
+    w: number,
+    h: number,
+    r: number,
+  ): void {
     ctx.beginPath();
     ctx.moveTo(x + r, y);
     ctx.arcTo(x + w, y, x + w, y + h, r);
@@ -188,7 +203,7 @@
     talking: '💬',
     waiting_human: '❓',
     blocked: '🚫',
-    offline: ''
+    offline: '',
   };
 
   function draw(ctx: CanvasRenderingContext2D): void {
@@ -214,7 +229,7 @@
       MEETING_ROOM.x - MEETING_ROOM_SIZE.width / 2,
       MEETING_ROOM.y - MEETING_ROOM_SIZE.height / 2,
       MEETING_ROOM_SIZE.width,
-      MEETING_ROOM_SIZE.height
+      MEETING_ROOM_SIZE.height,
     );
     ctx.fillStyle = '#94a3b8';
     ctx.font = '11px system-ui, sans-serif';
@@ -308,7 +323,7 @@
     const rect = canvasEl!.getBoundingClientRect();
     return {
       x: ((event.clientX - rect.left) / rect.width) * CANVAS_WIDTH,
-      y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT
+      y: ((event.clientY - rect.top) / rect.height) * CANVAS_HEIGHT,
     };
   }
 
@@ -322,7 +337,11 @@
   }
 
   function zoneAt(point: Point) {
-    return zoneList.find((zone) => pointInRect(point.x, point.y, zone.x, zone.y, zone.width, zone.height)) ?? null;
+    return (
+      zoneList.find((zone) =>
+        pointInRect(point.x, point.y, zone.x, zone.y, zone.width, zone.height),
+      ) ?? null
+    );
   }
 
   function handleClick(event: MouseEvent): void {
@@ -380,8 +399,8 @@
   <div>
     <h1 class="text-2xl font-semibold">Office</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
-      Click a desk to see what someone's doing, or click the reception/whiteboard/bookshelf/server rack to jump to
-      Inbox/Projects/Knowledge/Runs.
+      Click a desk to see what someone's doing, or click the reception/whiteboard/bookshelf/server
+      rack to jump to Inbox/Projects/Knowledge/Runs.
     </p>
   </div>
 
@@ -392,7 +411,9 @@
   {/if}
 
   <div class="flex flex-col gap-4 lg:flex-row">
-    <div class="min-w-0 flex-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+    <div
+      class="min-w-0 flex-1 overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+    >
       <canvas
         bind:this={canvasEl}
         width={CANVAS_WIDTH}
@@ -403,7 +424,9 @@
       ></canvas>
     </div>
 
-    <div class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm lg:w-80 lg:shrink-0">
+    <div
+      class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm lg:w-80 lg:shrink-0"
+    >
       {#if !selectedAgent}
         <p class="text-[var(--color-text-muted)]">
           Click someone's desk to see their persona and live status, or send them a quick message.
@@ -416,7 +439,10 @@
             <div class="flex items-center gap-2">
               <h2 class="font-semibold">{selectedAgent.name}</h2>
               {#if selectedAgent.is_system}
-                <span class="rounded-full border border-[var(--color-accent)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]">CEO</span>
+                <span
+                  class="rounded-full border border-[var(--color-accent)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]"
+                  >CEO</span
+                >
               {/if}
             </div>
             <p class="text-[var(--color-text-muted)]">{selectedAgent.title}</p>
@@ -424,7 +450,9 @@
 
           <p class="text-xs">
             <span class="font-medium">Status:</span>
-            <span class="capitalize">{state.replace('_', ' ')}</span>{status.detail ? ` - ${status.detail}` : ''}
+            <span class="capitalize">{state.replace('_', ' ')}</span>{status.detail
+              ? ` - ${status.detail}`
+              : ''}
           </p>
 
           {#if selectedAgent.persona.bio}
@@ -441,7 +469,10 @@
             >
               View trace
             </a>
-            <a href="/team" class="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]">
+            <a
+              href="/team"
+              class="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
+            >
               Edit persona/model
             </a>
           </div>

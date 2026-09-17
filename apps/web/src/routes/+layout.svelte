@@ -52,7 +52,9 @@
     return unsubscribe;
   });
 
-  const overBudget = $derived(spend !== null && spend.budgetUsd > 0 && spend.spentUsd >= spend.budgetUsd);
+  const overBudget = $derived(
+    spend !== null && spend.budgetUsd > 0 && spend.spentUsd >= spend.budgetUsd,
+  );
 
   async function logout() {
     await trpc().auth.logout.mutate();
@@ -70,7 +72,7 @@
     { href: '/artifacts', label: 'Artifacts', icon: '🗂️' },
     { href: '/runs', label: 'Runs', icon: '⚙️' },
     { href: '/inbox', label: 'Inbox', icon: '📥' },
-    { href: '/settings', label: 'Settings', icon: '🔧' }
+    { href: '/settings', label: 'Settings', icon: '🔧' },
   ];
 
   function isActive(href: string): boolean {
@@ -92,12 +94,17 @@
       class="flex shrink-0 items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs text-[var(--color-text-muted)]"
       title="Spend so far today across all agents, against the company's daily budget"
     >
-      <span aria-hidden="true" class={overBudget ? 'text-[var(--color-danger)]' : 'text-[var(--color-success)]'}>●</span>
+      <span
+        aria-hidden="true"
+        class={overBudget ? 'text-[var(--color-danger)]' : 'text-[var(--color-success)]'}>●</span
+      >
       <span>
         {#if spend === null}
           $0.00 today
         {:else}
-          ${spend.spentUsd.toFixed(2)}{spend.budgetUsd > 0 ? ` / $${spend.budgetUsd.toFixed(2)}` : ''} today
+          ${spend.spentUsd.toFixed(2)}{spend.budgetUsd > 0
+            ? ` / $${spend.budgetUsd.toFixed(2)}`
+            : ''} today
         {/if}
       </span>
     </div>
@@ -105,7 +112,9 @@
     {#if authenticated}
       <div class="flex shrink-0 items-center gap-2">
         {#if currentUserName}
-          <span class="hidden text-xs text-[var(--color-text-muted)] sm:inline">{currentUserName}</span>
+          <span class="hidden text-xs text-[var(--color-text-muted)] sm:inline"
+            >{currentUserName}</span
+          >
         {/if}
         <button
           type="button"
@@ -135,7 +144,7 @@
           href={link.href}
           aria-current={isActive(link.href) ? 'page' : undefined}
           class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors {isActive(
-            link.href
+            link.href,
           )
             ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
             : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'}"

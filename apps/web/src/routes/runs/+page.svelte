@@ -64,7 +64,7 @@
     waiting_human: 'Waiting on human',
     succeeded: 'Succeeded',
     failed: 'Failed',
-    cancelled: 'Cancelled'
+    cancelled: 'Cancelled',
   };
 
   // Success/failure get their own color; every other status (including the
@@ -76,14 +76,14 @@
     waiting_human: 'text-[var(--color-text-muted)]',
     succeeded: 'text-[var(--color-success)]',
     failed: 'text-[var(--color-danger)]',
-    cancelled: 'text-[var(--color-text-muted)]'
+    cancelled: 'text-[var(--color-text-muted)]',
   };
 
   const triggerLabels: Record<RunTrigger, string> = {
     task: 'Task',
     mention: 'Mention',
     schedule: 'Schedule',
-    human: 'Human'
+    human: 'Human',
   };
 
   const kindMeta: Record<RunStepKind, { label: string; icon: string }> = {
@@ -91,7 +91,7 @@
     tool_call: { label: 'Tool call', icon: '🔧' },
     tool_result: { label: 'Tool result', icon: '↩️' },
     message: { label: 'Message', icon: '💬' },
-    thinking_summary: { label: 'Thinking', icon: '💭' }
+    thinking_summary: { label: 'Thinking', icon: '💭' },
   };
 
   // Steps whose payload is a tool invocation/output get a visually distinct
@@ -145,7 +145,7 @@
   // (apps/server/src/trpc/routers/runs.ts / @katnor/db's runStep repo) -
   // cheap, and guards this view against ever showing a trace out of order.
   const orderedSteps = $derived(
-    selectedRun ? [...selectedRun.steps].sort((a, b) => a.seq - b.seq) : []
+    selectedRun ? [...selectedRun.steps].sort((a, b) => a.seq - b.seq) : [],
   );
 
   function describeError(err: unknown): string {
@@ -327,12 +327,17 @@
   });
 
   function costBarWidth(row: CostRow): number {
-    if (!row.budgetUsd || row.budgetUsd <= 0) return Math.min(100, (row.totalUsd / Math.max(0.01, costs?.budgets.company_daily_usd ?? 1)) * 100);
+    if (!row.budgetUsd || row.budgetUsd <= 0)
+      return Math.min(
+        100,
+        (row.totalUsd / Math.max(0.01, costs?.budgets.company_daily_usd ?? 1)) * 100,
+      );
     return Math.min(100, (row.totalUsd / row.budgetUsd) * 100);
   }
 
   function costBarColor(row: CostRow): string {
-    if (row.budgetUsd && row.budgetUsd > 0 && row.totalUsd >= row.budgetUsd) return 'var(--color-danger)';
+    if (row.budgetUsd && row.budgetUsd > 0 && row.totalUsd >= row.budgetUsd)
+      return 'var(--color-danger)';
     return 'var(--color-accent)';
   }
 
@@ -357,20 +362,42 @@
   {#if step.kind === 'llm_call'}
     {@const usage = asRecord(payload.usage)}
     <div class="flex flex-wrap gap-x-3 gap-y-0.5 text-xs text-[var(--color-text-muted)]">
-      <span>model: <span class="text-[var(--color-text)]">{asString(payload.model, 'unknown')}</span></span>
+      <span
+        >model: <span class="text-[var(--color-text)]">{asString(payload.model, 'unknown')}</span
+        ></span
+      >
       {#if payload.served_by}
         {@const servedBy = asRecord(payload.served_by)}
-        <span>served by: <span class="text-[var(--color-text)]">{asString(servedBy.provider, '?')}/{asString(servedBy.model, '?')}</span></span>
+        <span
+          >served by: <span class="text-[var(--color-text)]"
+            >{asString(servedBy.provider, '?')}/{asString(servedBy.model, '?')}</span
+          ></span
+        >
       {/if}
-      <span>stop: <span class="text-[var(--color-text)]">{asString(payload.stop_reason, 'unknown')}</span></span>
+      <span
+        >stop: <span class="text-[var(--color-text)]"
+          >{asString(payload.stop_reason, 'unknown')}</span
+        ></span
+      >
       {#if usage.inputTokens != null || usage.outputTokens != null}
-        <span>usage: <span class="text-[var(--color-text)]">{Number(usage.inputTokens ?? 0)} in / {Number(usage.outputTokens ?? 0)} out</span></span>
+        <span
+          >usage: <span class="text-[var(--color-text)]"
+            >{Number(usage.inputTokens ?? 0)} in / {Number(usage.outputTokens ?? 0)} out</span
+          ></span
+        >
       {/if}
       {#if usage.cacheReadTokens}
-        <span>cache read: <span class="text-[var(--color-text)]">{Number(usage.cacheReadTokens)}</span></span>
+        <span
+          >cache read: <span class="text-[var(--color-text)]">{Number(usage.cacheReadTokens)}</span
+          ></span
+        >
       {/if}
       {#if usage.cacheCreationTokens}
-        <span>cache write: <span class="text-[var(--color-text)]">{Number(usage.cacheCreationTokens)}</span></span>
+        <span
+          >cache write: <span class="text-[var(--color-text)]"
+            >{Number(usage.cacheCreationTokens)}</span
+          ></span
+        >
       {/if}
     </div>
     {#if payload.refusal_category}
@@ -382,7 +409,7 @@
     <p class="text-sm font-medium">{asString(payload.name, 'unknown tool')}</p>
     <pre
       class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--color-bg)] p-2 text-xs">{prettyJson(
-        payload.input
+        payload.input,
       )}</pre>
   {:else if step.kind === 'tool_result'}
     <div class="flex items-center gap-2">
@@ -400,7 +427,7 @@
   {:else}
     <pre
       class="max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-md bg-[var(--color-bg)] p-2 text-xs">{prettyJson(
-        payload
+        payload,
       )}</pre>
   {/if}
 {/snippet}
@@ -413,8 +440,14 @@
     </p>
   </div>
 
-  <section class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-    <button type="button" class="flex items-center justify-between gap-3 text-left" onclick={toggleCosts}>
+  <section
+    class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+  >
+    <button
+      type="button"
+      class="flex items-center justify-between gap-3 text-left"
+      onclick={toggleCosts}
+    >
       <span class="text-lg font-semibold">Today's spend</span>
       <span class="text-sm text-[var(--color-text-muted)]">{costsOpen ? 'Hide' : 'Show'}</span>
     </button>
@@ -434,7 +467,9 @@
                 <div class="flex justify-between text-xs">
                   <span>{row.name}</span>
                   <span class="text-[var(--color-text-muted)]">
-                    ${row.totalUsd.toFixed(2)}{row.budgetUsd ? ` / $${row.budgetUsd.toFixed(2)}` : ''}
+                    ${row.totalUsd.toFixed(2)}{row.budgetUsd
+                      ? ` / $${row.budgetUsd.toFixed(2)}`
+                      : ''}
                   </span>
                 </div>
                 <div class="h-1.5 w-full rounded-full bg-[var(--color-surface-muted)]">
@@ -450,7 +485,9 @@
           <div class="flex flex-col gap-2">
             <h3 class="text-sm font-semibold text-[var(--color-text-muted)]">By project</h3>
             {#if costs.byProject.length === 0}
-              <p class="text-xs text-[var(--color-text-muted)]">No project-scoped spend yet today.</p>
+              <p class="text-xs text-[var(--color-text-muted)]">
+                No project-scoped spend yet today.
+              </p>
             {/if}
             {#each costs.byProject as row (row.name)}
               {@const budgetUsd = costs.budgets.project_daily_usd}
@@ -472,7 +509,8 @@
           </div>
         </div>
         <p class="text-xs text-[var(--color-text-muted)]">
-          Company-wide budget: ${costs.budgets.company_daily_usd.toFixed(2)}/day - configurable in Settings.
+          Company-wide budget: ${costs.budgets.company_daily_usd.toFixed(2)}/day - configurable in
+          Settings.
         </p>
       {/if}
     {/if}
@@ -542,12 +580,18 @@
             >
               <div class="flex items-center justify-between gap-2">
                 <span class="truncate font-medium">{agentName(r.agent_id)}</span>
-                <span class="flex shrink-0 items-center gap-1.5 text-xs font-medium {statusStyles[r.status]}">
+                <span
+                  class="flex shrink-0 items-center gap-1.5 text-xs font-medium {statusStyles[
+                    r.status
+                  ]}"
+                >
                   <span aria-hidden="true">●</span>
                   {statusLabels[r.status] ?? r.status}
                 </span>
               </div>
-              <div class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--color-text-muted)]">
+              <div
+                class="flex flex-wrap items-center gap-x-2 gap-y-0.5 text-xs text-[var(--color-text-muted)]"
+              >
                 <span>{triggerLabels[r.trigger] ?? r.trigger}</span>
                 <span aria-hidden="true">·</span>
                 <span>{formatDateTime(r.started_at)}</span>
@@ -556,12 +600,18 @@
                   <span>{duration}</span>
                 {/if}
               </div>
-              <div class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--color-text-muted)]">
-                <span>{r.tokens_in.toLocaleString()} in / {r.tokens_out.toLocaleString()} out tokens</span>
+              <div
+                class="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-xs text-[var(--color-text-muted)]"
+              >
+                <span
+                  >{r.tokens_in.toLocaleString()} in / {r.tokens_out.toLocaleString()} out tokens</span
+                >
                 <span>{formatCost(r.cost_usd)}</span>
               </div>
               {#if r.summary}
-                <p class="truncate text-sm text-[var(--color-text-muted)]" title={r.summary}>{r.summary}</p>
+                <p class="truncate text-sm text-[var(--color-text-muted)]" title={r.summary}>
+                  {r.summary}
+                </p>
               {/if}
             </button>
           {/each}
@@ -611,7 +661,9 @@
               <span>Duration</span>
             </div>
             <div class="flex flex-col gap-0.5">
-              <span class="text-[var(--color-text)]">{selectedRun.tokens_in.toLocaleString()} / {selectedRun.tokens_out.toLocaleString()}</span>
+              <span class="text-[var(--color-text)]"
+                >{selectedRun.tokens_in.toLocaleString()} / {selectedRun.tokens_out.toLocaleString()}</span
+              >
               <span>Tokens in / out</span>
             </div>
             <div class="flex flex-col gap-0.5">
@@ -625,7 +677,9 @@
           {/if}
 
           {#if traceError}
-            <p class="text-xs text-[var(--color-danger)]">Couldn't refresh this trace: {traceError}</p>
+            <p class="text-xs text-[var(--color-danger)]">
+              Couldn't refresh this trace: {traceError}
+            </p>
           {/if}
 
           {#if orderedSteps.length === 0}
@@ -635,11 +689,15 @@
               {#each orderedSteps as step (step.id)}
                 {@const meta = kindMeta[step.kind] ?? { label: step.kind, icon: '•' }}
                 <li
-                  class="flex gap-3 rounded-lg border border-[var(--color-border)] p-3 {isToolKind(step.kind)
+                  class="flex gap-3 rounded-lg border border-[var(--color-border)] p-3 {isToolKind(
+                    step.kind,
+                  )
                     ? 'bg-[var(--color-surface-muted)]'
                     : 'bg-[var(--color-surface)]'}"
                 >
-                  <span class="w-6 shrink-0 text-right text-xs text-[var(--color-text-muted)]">{step.seq}</span>
+                  <span class="w-6 shrink-0 text-right text-xs text-[var(--color-text-muted)]"
+                    >{step.seq}</span
+                  >
                   <div class="flex min-w-0 flex-1 flex-col gap-1.5">
                     <div class="flex flex-wrap items-center gap-2">
                       <span
@@ -649,10 +707,14 @@
                         {meta.label}
                       </span>
                       {#if step.tokens != null}
-                        <span class="text-[10px] text-[var(--color-text-muted)]">{step.tokens.toLocaleString()} tok</span>
+                        <span class="text-[10px] text-[var(--color-text-muted)]"
+                          >{step.tokens.toLocaleString()} tok</span
+                        >
                       {/if}
                       {#if step.duration_ms != null}
-                        <span class="text-[10px] text-[var(--color-text-muted)]">{step.duration_ms.toLocaleString()} ms</span>
+                        <span class="text-[10px] text-[var(--color-text-muted)]"
+                          >{step.duration_ms.toLocaleString()} ms</span
+                        >
                       {/if}
                     </div>
                     {@render stepPayload(step)}

@@ -30,7 +30,7 @@
     image: '🖼️',
     design: '🎨',
     link: '🔗',
-    report: '📊'
+    report: '📊',
   };
 
   let artifacts = $state<ArtifactRow[]>([]);
@@ -108,7 +108,7 @@
 
     try {
       versions = (await trpc().artifacts.listGroup.query({
-        artifactGroupId: row.artifact_group_id
+        artifactGroupId: row.artifact_group_id,
       })) as unknown as ArtifactRow[];
     } catch {
       // Non-fatal - the detail pane still works with just `row` if this fails.
@@ -126,7 +126,8 @@
       previewUrl = resolveUrl(url);
       if (isTextPreviewable(row)) {
         const response = await fetch(previewUrl);
-        if (!response.ok) throw new Error(`Server returned ${response.status} fetching this artifact.`);
+        if (!response.ok)
+          throw new Error(`Server returned ${response.status} fetching this artifact.`);
         const text = await response.text();
         // A generous but bounded preview - a multi-megabyte diff/report
         // isn't useful to render in full in a side pane.
@@ -140,7 +141,7 @@
   }
 
   let filtered = $derived(
-    kindFilter === 'all' ? artifacts : artifacts.filter((a) => a.kind === kindFilter)
+    kindFilter === 'all' ? artifacts : artifacts.filter((a) => a.kind === kindFilter),
   );
 
   function formatDate(iso: string): string {
@@ -153,8 +154,8 @@
   <div>
     <h1 class="text-2xl font-semibold">Artifacts</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
-      Every PR, diff, doc, design export, and report the team produces, versioned and linked back
-      to the task, run, and agent that made it.
+      Every PR, diff, doc, design export, and report the team produces, versioned and linked back to
+      the task, run, and agent that made it.
     </p>
   </div>
 
@@ -176,13 +177,16 @@
           : 'border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'}"
         onclick={() => (kindFilter = kind)}
       >
-        {kindIcons[kind]} {kind}
+        {kindIcons[kind]}
+        {kind}
       </button>
     {/each}
   </div>
 
   {#if loadError}
-    <div class="rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm">
+    <div
+      class="rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm"
+    >
       <p class="font-medium text-[var(--color-danger)]">Couldn't load artifacts</p>
       <p class="text-[var(--color-text-muted)]">{loadError}</p>
     </div>
@@ -200,7 +204,8 @@
           <button
             type="button"
             onclick={() => selectArtifact(row)}
-            class="flex flex-col gap-1 rounded-lg border p-3 text-left text-sm transition-colors {selected?.id === row.id
+            class="flex flex-col gap-1 rounded-lg border p-3 text-left text-sm transition-colors {selected?.id ===
+            row.id
               ? 'border-[var(--color-accent)] bg-[var(--color-surface-muted)]'
               : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'}"
           >
@@ -217,7 +222,9 @@
         {/each}
       </div>
 
-      <div class="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+      <div
+        class="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      >
         {#if !selected}
           <p class="text-sm text-[var(--color-text-muted)]">Select an artifact to preview it.</p>
         {:else}
@@ -242,7 +249,9 @@
                 <select
                   value={selected.id}
                   onchange={(e) => {
-                    const row = versions.find((v) => v.id === (e.currentTarget as HTMLSelectElement).value);
+                    const row = versions.find(
+                      (v) => v.id === (e.currentTarget as HTMLSelectElement).value,
+                    );
                     if (row) selectArtifact(row);
                   }}
                   class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1 text-sm"
@@ -260,10 +269,15 @@
               <p class="text-sm text-[var(--color-danger)]">{previewError}</p>
             {:else if selected.kind === 'image' || selected.mime?.startsWith('image/')}
               {#if previewUrl}
-                <img src={previewUrl} alt={selected.title} class="max-h-[70vh] w-auto rounded-md border border-[var(--color-border)]" />
+                <img
+                  src={previewUrl}
+                  alt={selected.title}
+                  class="max-h-[70vh] w-auto rounded-md border border-[var(--color-border)]"
+                />
               {/if}
             {:else if previewText !== null}
-              <pre class="max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-md bg-[var(--color-bg)] p-3 text-xs">{previewText}</pre>
+              <pre
+                class="max-h-[70vh] overflow-auto whitespace-pre-wrap rounded-md bg-[var(--color-bg)] p-3 text-xs">{previewText}</pre>
             {/if}
           </div>
         {/if}
