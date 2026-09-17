@@ -107,26 +107,27 @@ one process.
 
 ### 2.2 Tech stack (decisions)
 
-| Layer             | Choice                                                                                                      | Why                                                                                     |
-| ----------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
-| Language          | TypeScript everywhere (Node 22)                                                                             | One language for web, server, worker, and the Claude Agent SDK                          |
-| Monorepo          | pnpm workspaces + Turborepo                                                                                 | Shared packages, fast CI                                                                |
-| Web               | SvelteKit (Svelte 5, runes), Tailwind, shadcn-svelte, TanStack Query (Svelte), Svelte stores for live state | Small bundles, reactive by default, simple to keep live data in sync                    |
-| 2D office         | Phaser 3 (inside a Svelte component), Tiled maps, pixel-art tilesets                                        | Built-in tilemaps, sprites, animation, pathfinding plugins                              |
-| Kanban            | svelte-dnd-action                                                                                           | Drag-and-drop built for Svelte, keyboard accessible                                     |
-| Graph view        | Sigma.js + graphology                                                                                       | Renders thousands of nodes in WebGL                                                     |
-| API               | Hono + tRPC + zod (tRPC client via trpc-sveltekit)                                                          | End-to-end types, tiny footprint                                                        |
-| Realtime          | WebSocket (`ws`) fed by Postgres LISTEN/NOTIFY                                                              | No extra broker                                                                         |
-| DB                | Postgres 16 + pgvector, Drizzle ORM                                                                         | Relational data, vectors, and graph tables in one DB                                    |
-| Queue             | pg-boss                                                                                                     | Durable jobs without Redis                                                              |
-| LLM (Claude)      | `@anthropic-ai/sdk` (Messages API, Tool Runner)                                                             | Full feature access: adaptive thinking, effort, caching, structured outputs, compaction |
-| LLM (others)      | Provider adapter interface; OpenAI-compatible adapter first, then Google, Ollama                            | "Each employee can use a different model"                                               |
-| Coding agents     | Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) for Claude Code; `codex exec` CLI for Codex             | Batteries-included coding harnesses run inside the sandbox                              |
-| Tool integrations | MCP (Model Context Protocol) client; GitHub MCP, Figma MCP, Playwright MCP                                  | One plug-in standard for external tools                                                 |
-| Sandboxes         | Docker via dockerode; per-project container with a mounted workspace volume                                 | Isolation for shell and code execution                                                  |
-| Artifacts         | S3-compatible (MinIO) in prod, local FS in dev                                                              | Versioned binary/text storage                                                           |
-| Wiki              | Markdown files in a git repo per project (`wiki/`)                                                          | Human-readable, diffable, editable in Obsidian/VS Code                                  |
-| Auth              | Single owner account (password in env) for v1; better-auth later                                            | Keep v1 small                                                                           |
+| Layer             | Choice                                                                                                      | Why                                                                                       |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------- |
+| Language          | TypeScript everywhere (Node 22)                                                                             | One language for web, server, worker, and the Claude Agent SDK                            |
+| Monorepo          | pnpm workspaces + Turborepo                                                                                 | Shared packages, fast CI                                                                  |
+| Web               | SvelteKit (Svelte 5, runes), Tailwind, shadcn-svelte, TanStack Query (Svelte), Svelte stores for live state | Small bundles, reactive by default, simple to keep live data in sync                      |
+| 2D office         | Phaser 3 (inside a Svelte component), Tiled maps, pixel-art tilesets                                        | Built-in tilemaps, sprites, animation, pathfinding plugins                                |
+| Kanban            | svelte-dnd-action                                                                                           | Drag-and-drop built for Svelte, keyboard accessible                                       |
+| Graph view        | Sigma.js + graphology                                                                                       | Renders thousands of nodes in WebGL                                                       |
+| Code indexing     | graphify (`graphifyy`, Apache-2.0), run `--code-only` in the sandbox image                                  | tree-sitter AST over ~40 languages, deterministic and LLM-free, so indexing costs nothing |
+| API               | Hono + tRPC + zod (tRPC client via trpc-sveltekit)                                                          | End-to-end types, tiny footprint                                                          |
+| Realtime          | WebSocket (`ws`) fed by Postgres LISTEN/NOTIFY                                                              | No extra broker                                                                           |
+| DB                | Postgres 16 + pgvector, Drizzle ORM                                                                         | Relational data, vectors, and graph tables in one DB                                      |
+| Queue             | pg-boss                                                                                                     | Durable jobs without Redis                                                                |
+| LLM (Claude)      | `@anthropic-ai/sdk` (Messages API, Tool Runner)                                                             | Full feature access: adaptive thinking, effort, caching, structured outputs, compaction   |
+| LLM (others)      | Provider adapter interface; OpenAI-compatible adapter first, then Google, Ollama                            | "Each employee can use a different model"                                                 |
+| Coding agents     | Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) for Claude Code; `codex exec` CLI for Codex             | Batteries-included coding harnesses run inside the sandbox                                |
+| Tool integrations | MCP (Model Context Protocol) client; GitHub MCP, Figma MCP, Playwright MCP                                  | One plug-in standard for external tools                                                   |
+| Sandboxes         | Docker via dockerode; per-project container with a mounted workspace volume                                 | Isolation for shell and code execution                                                    |
+| Artifacts         | S3-compatible (MinIO) in prod, local FS in dev                                                              | Versioned binary/text storage                                                             |
+| Wiki              | Markdown files in a git repo per project (`wiki/`)                                                          | Human-readable, diffable, editable in Obsidian/VS Code                                    |
+| Auth              | Single owner account (password in env) for v1; better-auth later                                            | Keep v1 small                                                                             |
 
 ### 2.3 Repository layout
 
