@@ -17,7 +17,9 @@ export function getWorkspaceManager(): WorkspaceManager {
   const mode = process.env.SANDBOX_MODE?.trim().toLowerCase();
   cached =
     mode === 'host'
-      ? new HostWorkspaceManager(process.env.WORKSPACE_HOST_DIR?.trim() || DEFAULT_HOST_WORKSPACE_DIR)
+      ? new HostWorkspaceManager(
+          process.env.WORKSPACE_HOST_DIR?.trim() || DEFAULT_HOST_WORKSPACE_DIR,
+        )
       : new DockerWorkspaceManager(process.env.SANDBOX_IMAGE?.trim() || DEFAULT_SANDBOX_IMAGE);
   return cached;
 }

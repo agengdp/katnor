@@ -80,7 +80,11 @@ export async function getById(id: string): Promise<UserRow | undefined> {
 }
 
 export async function getByEmail(email: string): Promise<UserRow | undefined> {
-  const [row] = await db.select().from(user).where(eq(user.email, normalizeEmail(email))).limit(1);
+  const [row] = await db
+    .select()
+    .from(user)
+    .where(eq(user.email, normalizeEmail(email)))
+    .limit(1);
   return row;
 }
 

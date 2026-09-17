@@ -16,7 +16,9 @@ async function lintOneProject(boss: PgBoss, projectId: string): Promise<void> {
   const channels = await channelRepo.list({ project_id: project.id });
   const projectChannel = channels.find((c) => c.kind === 'project');
   if (!projectChannel) {
-    console.warn(`[worker] wiki-lint: project "${project.id}" has no project channel to report into - skipping`);
+    console.warn(
+      `[worker] wiki-lint: project "${project.id}" has no project channel to report into - skipping`,
+    );
     return;
   }
 
@@ -36,10 +38,14 @@ async function lintOneProject(boss: PgBoss, projectId: string): Promise<void> {
  * which means "every project" - see @katnor/agents' queues.ts doc comment.
  */
 export function createWikiLintHandler(boss: PgBoss) {
-  return async function wikiLint(jobs: PgBoss.Job<{ projectId?: string }>[]): Promise<{ ok: true }> {
+  return async function wikiLint(
+    jobs: PgBoss.Job<{ projectId?: string }>[],
+  ): Promise<{ ok: true }> {
     for (const job of jobs) {
       try {
-        const projectIds = job.data.projectId ? [job.data.projectId] : (await projectRepo.list()).map((p) => p.id);
+        const projectIds = job.data.projectId
+          ? [job.data.projectId]
+          : (await projectRepo.list()).map((p) => p.id);
         for (const projectId of projectIds) {
           await lintOneProject(boss, projectId);
         }

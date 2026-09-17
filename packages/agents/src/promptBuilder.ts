@@ -74,7 +74,8 @@ export function buildSystemPrompt(input: BuildPromptInput): string {
     '  when there is something new for you to do.',
   ].join('\n');
 
-  const strengths = agent.persona.strengths.length > 0 ? agent.persona.strengths.join(', ') : 'generalist';
+  const strengths =
+    agent.persona.strengths.length > 0 ? agent.persona.strengths.join(', ') : 'generalist';
   const personaSection = [
     '',
     `You are ${agent.name}, ${agent.title}.`,
@@ -82,7 +83,11 @@ export function buildSystemPrompt(input: BuildPromptInput): string {
     `Personality: ${agent.persona.personality}`,
     `Strengths: ${strengths}`,
     `Communication style: ${agent.persona.style}`,
-    managerName ? `You report to ${managerName}.` : agent.is_system ? 'You report to no one - you are the CEO.' : '',
+    managerName
+      ? `You report to ${managerName}.`
+      : agent.is_system
+        ? 'You report to no one - you are the CEO.'
+        : '',
     '',
     agent.system_prompt,
   ]
@@ -95,7 +100,10 @@ export function buildSystemPrompt(input: BuildPromptInput): string {
 function renderMessages(messages: MessageRow[]): string {
   if (messages.length === 0) return '(no messages yet)';
   return messages
-    .map((m) => `[${m.id}] ${m.author_type}:${m.author_id}${m.mentions.length > 0 ? ` (mentions: ${m.mentions.join(', ')})` : ''}: ${m.content}`)
+    .map(
+      (m) =>
+        `[${m.id}] ${m.author_type}:${m.author_id}${m.mentions.length > 0 ? ` (mentions: ${m.mentions.join(', ')})` : ''}: ${m.content}`,
+    )
     .join('\n');
 }
 
@@ -109,11 +117,15 @@ const TRIGGER_DESCRIPTIONS: Record<RunTrigger, string> = {
 const MAX_WIKI_INDEX_CHARS = 1500;
 
 /** A short excerpt of the project's wiki index (see @katnor/knowledge's wikiStorage.ts), if one exists yet - PLAN.md 4.1's "working context" includes "wiki index". */
-async function renderWikiIndex(project: NonNullable<BuildPromptInput['project']> | null): Promise<string | null> {
+async function renderWikiIndex(
+  project: NonNullable<BuildPromptInput['project']> | null,
+): Promise<string | null> {
   if (!project) return null;
   const index = await readPage(project.id, 'index.md');
   if (!index || index.trim().length === 0) return null;
-  return index.length > MAX_WIKI_INDEX_CHARS ? `${index.slice(0, MAX_WIKI_INDEX_CHARS)}\n...(truncated - use search_knowledge/ask_wiki for more)` : index;
+  return index.length > MAX_WIKI_INDEX_CHARS
+    ? `${index.slice(0, MAX_WIKI_INDEX_CHARS)}\n...(truncated - use search_knowledge/ask_wiki for more)`
+    : index;
 }
 
 export async function buildInitialUserMessage(input: BuildPromptInput): Promise<string> {
@@ -125,7 +137,9 @@ export async function buildInitialUserMessage(input: BuildPromptInput): Promise<
         `## Current task: ${input.task.title} (${input.task.id})`,
         `Status: ${input.task.status} | Priority: ${input.task.priority}`,
         input.task.description ? `Description: ${input.task.description}` : null,
-        input.task.acceptance_criteria ? `Acceptance criteria: ${input.task.acceptance_criteria}` : null,
+        input.task.acceptance_criteria
+          ? `Acceptance criteria: ${input.task.acceptance_criteria}`
+          : null,
       ]
         .filter((line): line is string => Boolean(line))
         .join('\n'),
@@ -141,9 +155,13 @@ export async function buildInitialUserMessage(input: BuildPromptInput): Promise<
     parts.push(`## Recent messages\n${renderMessages(input.recentMessages)}`);
   }
 
-  parts.push(`## What just happened\n${TRIGGER_DESCRIPTIONS[input.trigger]}${input.triggerNote ? ` ${input.triggerNote}` : ''}`);
+  parts.push(
+    `## What just happened\n${TRIGGER_DESCRIPTIONS[input.trigger]}${input.triggerNote ? ` ${input.triggerNote}` : ''}`,
+  );
 
-  parts.push('Decide what to do next and use your tools. End your turn once you have made progress.');
+  parts.push(
+    'Decide what to do next and use your tools. End your turn once you have made progress.',
+  );
 
   return parts.join('\n\n');
 }

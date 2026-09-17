@@ -13,7 +13,10 @@ export async function codeIndex(jobs: PgBoss.Job<{ projectId: string }>[]): Prom
     try {
       const project = await projectRepo.getById(job.data.projectId);
       if (!project) continue;
-      await indexProjectRepos({ id: project.id, name: project.name, repos: project.repos }, project.id);
+      await indexProjectRepos(
+        { id: project.id, name: project.name, repos: project.repos },
+        project.id,
+      );
     } catch (err) {
       console.error(`[worker] code-index job ${job.id} threw:`, err);
     }

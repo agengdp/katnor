@@ -310,7 +310,8 @@
         <p class="font-medium text-[var(--color-danger)]">Couldn't load chat</p>
         <p class="text-[var(--color-text-muted)]">{sidebarError}</p>
         <p class="text-[var(--color-text-muted)]">
-          apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong place.
+          apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong
+          place.
         </p>
         <div>
           <button
@@ -331,7 +332,9 @@
           class="hidden sm:flex sm:min-h-0 sm:w-64 sm:shrink-0 sm:flex-col sm:gap-4 sm:overflow-y-auto sm:border-r sm:border-[var(--color-border)] sm:pr-4"
         >
           <div class="flex flex-col gap-1">
-            <p class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Channels</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+              Channels
+            </p>
             {#if generalChannel}
               {@const general = generalChannel}
               <button
@@ -360,12 +363,16 @@
               </button>
             {/each}
             {#if projectChannels.length === 0}
-              <p class="px-3 py-1 text-xs text-[var(--color-text-muted)]">No project channels yet.</p>
+              <p class="px-3 py-1 text-xs text-[var(--color-text-muted)]">
+                No project channels yet.
+              </p>
             {/if}
           </div>
 
           <div class="flex flex-col gap-1">
-            <p class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">Agents</p>
+            <p class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+              Agents
+            </p>
             {#each agents as agent (agent.id)}
               <button
                 type="button"
@@ -373,7 +380,7 @@
                 disabled={openingDmAgentId === agent.id}
                 title={agent.name}
                 class="flex items-center gap-2 truncate rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors disabled:opacity-50 {isDmSelected(
-                  agent
+                  agent,
                 )
                   ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
                   : 'hover:bg-[var(--color-surface-muted)]'}"
@@ -384,7 +391,9 @@
                     ? 'bg-[var(--color-success)]'
                     : 'bg-[var(--color-text-muted)]'}"
                 ></span>
-                <span class="truncate">{openingDmAgentId === agent.id ? 'Opening…' : agent.name}</span>
+                <span class="truncate"
+                  >{openingDmAgentId === agent.id ? 'Opening…' : agent.name}</span
+                >
               </button>
             {/each}
             {#if agents.length === 0}
@@ -394,7 +403,10 @@
         </aside>
 
         <!-- Mobile channel/agent scroller (replaces the sidebar below sm:) -->
-        <div aria-label="Channels and agents" class="flex shrink-0 gap-2 overflow-x-auto pb-1 sm:hidden">
+        <div
+          aria-label="Channels and agents"
+          class="flex shrink-0 gap-2 overflow-x-auto pb-1 sm:hidden"
+        >
           {#if generalChannel}
             {@const general = generalChannel}
             <button
@@ -426,7 +438,7 @@
               onclick={() => openDm(agent)}
               disabled={openingDmAgentId === agent.id}
               class="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 {isDmSelected(
-                agent
+                agent,
               )
                 ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
                 : 'border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'}"
@@ -440,7 +452,9 @@
         <section
           class="flex min-h-0 flex-1 flex-col rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
         >
-          <div class="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3">
+          <div
+            class="flex items-center justify-between gap-2 border-b border-[var(--color-border)] px-4 py-3"
+          >
             <h2 class="truncate text-base font-semibold">{selectedLabel}</h2>
             <span
               class="shrink-0 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]"
@@ -449,9 +463,13 @@
             </span>
           </div>
 
-          <div class="flex min-h-0 flex-1 flex-col divide-y divide-[var(--color-border)] overflow-y-auto px-4">
+          <div
+            class="flex min-h-0 flex-1 flex-col divide-y divide-[var(--color-border)] overflow-y-auto px-4"
+          >
             {#if messagesLoading}
-              <p class="py-6 text-center text-sm text-[var(--color-text-muted)]">Loading messages…</p>
+              <p class="py-6 text-center text-sm text-[var(--color-text-muted)]">
+                Loading messages…
+              </p>
             {:else if messagesError}
               <div class="flex flex-col items-center gap-2 py-6 text-center text-sm">
                 <p class="text-[var(--color-danger)]">{messagesError}</p>
@@ -464,17 +482,23 @@
                 </button>
               </div>
             {:else if messages.length === 0}
-              <p class="py-6 text-center text-sm text-[var(--color-text-muted)]">No messages yet - say hello.</p>
+              <p class="py-6 text-center text-sm text-[var(--color-text-muted)]">
+                No messages yet - say hello.
+              </p>
             {:else}
               {#each messages as m (m.id)}
                 <div class="flex flex-col gap-1 py-3">
                   <div class="flex flex-wrap items-baseline gap-2">
                     <span class="text-sm font-semibold">{authorLabel(m)}</span>
-                    <span class="text-xs text-[var(--color-text-muted)]">{formatTime(m.created_at)}</span>
+                    <span class="text-xs text-[var(--color-text-muted)]"
+                      >{formatTime(m.created_at)}</span
+                    >
                   </div>
                   <p class="whitespace-pre-wrap break-words text-sm">{m.content}</p>
                   {#if m.mentions.length > 0}
-                    <p class="text-xs text-[var(--color-text-muted)]">{formatMentions(m.mentions)}</p>
+                    <p class="text-xs text-[var(--color-text-muted)]">
+                      {formatMentions(m.mentions)}
+                    </p>
                   {/if}
                 </div>
               {/each}
@@ -494,7 +518,7 @@
                     type="button"
                     onclick={() => toggleMention(agent.id)}
                     class="shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors {selectedMentionIds.includes(
-                      agent.id
+                      agent.id,
                     )
                       ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
                       : 'border-[var(--color-border)] text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]'}"
@@ -503,7 +527,9 @@
                   </button>
                 {/each}
                 {#if agents.length === 0}
-                  <span class="text-xs text-[var(--color-text-muted)]">No agents to mention yet.</span>
+                  <span class="text-xs text-[var(--color-text-muted)]"
+                    >No agents to mention yet.</span
+                  >
                 {/if}
               </div>
             {/if}
@@ -525,7 +551,9 @@
                 {sending ? 'Sending…' : 'Send'}
               </button>
             </form>
-            <p class="text-xs text-[var(--color-text-muted)]">Enter to send - Shift+Enter for a new line.</p>
+            <p class="text-xs text-[var(--color-text-muted)]">
+              Enter to send - Shift+Enter for a new line.
+            </p>
           </div>
         </section>
       </div>

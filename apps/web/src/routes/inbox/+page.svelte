@@ -169,7 +169,7 @@
   function outcomeMessage(
     row: ApprovalRow,
     decision: 'approved' | 'rejected',
-    answer?: string
+    answer?: string,
   ): { text: string; positive: boolean } {
     if (row.kind === 'hire') {
       const name = hireName(row.payload);
@@ -191,7 +191,8 @@
     decidingIds[row.id] = true;
     actionErrors[row.id] = '';
     try {
-      const input = answer === undefined ? { id: row.id, decision } : { id: row.id, decision, answer };
+      const input =
+        answer === undefined ? { id: row.id, decision } : { id: row.id, decision, answer };
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
       const updated: any = await trpc().approvals.decide.mutate(input);
       if (updated) {
@@ -228,8 +229,12 @@
   </div>
 
   {#if confirmation}
-    <div class="flex items-center justify-between gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm">
-      <span class={confirmation.positive ? 'text-[var(--color-success)]' : 'text-[var(--color-text)]'}>
+    <div
+      class="flex items-center justify-between gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-2 text-sm"
+    >
+      <span
+        class={confirmation.positive ? 'text-[var(--color-success)]' : 'text-[var(--color-text)]'}
+      >
         {confirmation.text}
       </span>
       <button
@@ -253,7 +258,8 @@
           ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
           : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'}"
       >
-        Pending{#if pending.length > 0} ({pending.length}){/if}
+        Pending{#if pending.length > 0}
+          ({pending.length}){/if}
       </button>
       <button
         type="button"
@@ -278,12 +284,14 @@
   </div>
 
   {#if loadError}
-    <div class="flex flex-col gap-2 rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm">
+    <div
+      class="flex flex-col gap-2 rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm"
+    >
       <p class="font-medium text-[var(--color-danger)]">Couldn't load the inbox</p>
       <p class="text-[var(--color-text-muted)]">{loadError}</p>
       <p class="text-[var(--color-text-muted)]">
-        apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong
-        place. Try Reload once it's up.
+        apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong place.
+        Try Reload once it's up.
       </p>
     </div>
   {/if}
@@ -297,9 +305,13 @@
   {:else if currentList.length > 0}
     <div class="flex flex-col gap-4">
       {#each currentList as row (row.id)}
-        <article class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <article
+          class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+        >
           <div class="flex flex-wrap items-center justify-between gap-2">
-            <span class="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-text-muted)]">
+            <span
+              class="rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-0.5 text-xs font-medium text-[var(--color-text-muted)]"
+            >
               {kindLabel(row.kind)}
             </span>
             <span class="text-xs text-[var(--color-text-muted)]">{formatTime(row.created_at)}</span>
@@ -308,7 +320,8 @@
           {#if row.kind === 'hire'}
             <div class="flex flex-col gap-1">
               <h3 class="font-medium">
-                {hireName(row.payload)}{#if hireTitle(row.payload)} — {hireTitle(row.payload)}{/if}
+                {hireName(row.payload)}{#if hireTitle(row.payload)}
+                  — {hireTitle(row.payload)}{/if}
               </h3>
               {#if hireBio(row.payload)}
                 <p class="text-sm text-[var(--color-text-muted)]">{hireBio(row.payload)}</p>
@@ -319,7 +332,9 @@
                 </p>
               {/if}
               {#if hireModelSummary(row.payload)}
-                <p class="text-xs text-[var(--color-text-muted)]">Model: {hireModelSummary(row.payload)}</p>
+                <p class="text-xs text-[var(--color-text-muted)]">
+                  Model: {hireModelSummary(row.payload)}
+                </p>
               {/if}
             </div>
           {:else if row.kind === 'question'}
@@ -327,7 +342,12 @@
               <h3 class="font-medium">{questionText(row.payload)}</h3>
             </div>
           {:else}
-            <pre class="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-[var(--color-surface-muted)] p-3 text-xs text-[var(--color-text)]">{JSON.stringify(row.payload, null, 2)}</pre>
+            <pre
+              class="overflow-x-auto whitespace-pre-wrap break-words rounded-md bg-[var(--color-surface-muted)] p-3 text-xs text-[var(--color-text)]">{JSON.stringify(
+                row.payload,
+                null,
+                2,
+              )}</pre>
           {/if}
 
           {#if view === 'pending'}
@@ -410,17 +430,27 @@
             {/if}
           {:else}
             <div class="flex flex-wrap items-center gap-2 text-sm">
-              <span class="font-medium {row.status === 'approved' ? 'text-[var(--color-success)]' : 'text-[var(--color-text-muted)]'}">
-                {#if row.kind === 'question'}{row.status === 'approved' ? 'Answered' : 'Declined'}{:else}{row.status === 'approved' ? 'Approved' : 'Rejected'}{/if}
+              <span
+                class="font-medium {row.status === 'approved'
+                  ? 'text-[var(--color-success)]'
+                  : 'text-[var(--color-text-muted)]'}"
+              >
+                {#if row.kind === 'question'}{row.status === 'approved'
+                    ? 'Answered'
+                    : 'Declined'}{:else}{row.status === 'approved' ? 'Approved' : 'Rejected'}{/if}
               </span>
               {#if row.kind === 'question' && row.status === 'approved'}
                 <span class="text-[var(--color-text-muted)]">— {questionAnswer(row.payload)}</span>
               {:else if row.kind === 'hire' && row.status === 'approved'}
-                <span class="text-[var(--color-text-muted)]">— {hireName(row.payload)} is now on the team</span>
+                <span class="text-[var(--color-text-muted)]"
+                  >— {hireName(row.payload)} is now on the team</span
+                >
               {/if}
             </div>
             {#if row.decided_at}
-              <p class="text-xs text-[var(--color-text-muted)]">Decided {formatTime(row.decided_at)}</p>
+              <p class="text-xs text-[var(--color-text-muted)]">
+                Decided {formatTime(row.decided_at)}
+              </p>
             {/if}
           {/if}
         </article>

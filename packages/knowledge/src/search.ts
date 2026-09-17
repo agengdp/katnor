@@ -28,14 +28,34 @@ function extractSnippet(content: string, query: string): string {
   return `${start > 0 ? '…' : ''}${content.slice(start, end).trim()}${end < content.length ? '…' : ''}`;
 }
 
-async function vectorSearch(projectId: string, embedding: number[], limit: number): Promise<SearchCitation[]> {
+async function vectorSearch(
+  projectId: string,
+  embedding: number[],
+  limit: number,
+): Promise<SearchCitation[]> {
   const [nodes, pages] = await Promise.all([
     kgNodeRepo.searchByEmbedding(embedding, { projectId, limit }),
     wikiPageRepo.searchByEmbedding(embedding, { projectId, limit }),
   ]);
   return [
-    ...nodes.map((n): SearchCitation => ({ kind: 'kg_node', id: n.id, title: n.name, snippet: n.summary ?? undefined, score: n.score })),
-    ...pages.map((p): SearchCitation => ({ kind: 'wiki_page', id: p.id, title: p.title, path: p.path, score: p.score })),
+    ...nodes.map(
+      (n): SearchCitation => ({
+        kind: 'kg_node',
+        id: n.id,
+        title: n.name,
+        snippet: n.summary ?? undefined,
+        score: n.score,
+      }),
+    ),
+    ...pages.map(
+      (p): SearchCitation => ({
+        kind: 'wiki_page',
+        id: p.id,
+        title: p.title,
+        path: p.path,
+        score: p.score,
+      }),
+    ),
   ];
 }
 
@@ -48,7 +68,11 @@ async function vectorSearch(projectId: string, embedding: number[], limit: numbe
  * query term, which a vector search never needs to do since the embedding
  * already captures the body.
  */
-async function keywordSearch(projectId: string, query: string, limit: number): Promise<SearchCitation[]> {
+async function keywordSearch(
+  projectId: string,
+  query: string,
+  limit: number,
+): Promise<SearchCitation[]> {
   const [nodes, titleMatches, allPaths] = await Promise.all([
     kgNodeRepo.searchByKeyword(query, { projectId, limit }),
     wikiPageRepo.searchByKeyword(query, { projectId, limit }),
@@ -67,7 +91,13 @@ async function keywordSearch(projectId: string, query: string, limit: number): P
   const lowerQuery = query.toLowerCase();
 
   for (const page of titleMatches) {
-    pageHits.set(page.id, { kind: 'wiki_page', id: page.id, title: page.title, path: page.path, score: 0.6 });
+    pageHits.set(page.id, {
+      kind: 'wiki_page',
+      id: page.id,
+      title: page.title,
+      path: page.path,
+      score: 0.6,
+    });
   }
   for (const page of allPaths) {
     if (pageHits.size >= limit * 2) break; // cheap upper bound before scoring/truncating below
@@ -94,12 +124,18 @@ async function keywordSearch(projectId: string, query: string, limit: number): P
  * configured, plain keyword matching otherwise - see ./embeddings.ts's doc
  * comment on why this degrades rather than errors.
  */
-export async function searchKnowledge(projectId: string, query: string, limit = DEFAULT_LIMIT): Promise<SearchCitation[]> {
+export async function searchKnowledge(
+  projectId: string,
+  query: string,
+  limit = DEFAULT_LIMIT,
+): Promise<SearchCitation[]> {
   const trimmed = query.trim();
   if (trimmed.length === 0) return [];
 
   const embedding = embeddingsAvailable() ? await embed(trimmed) : null;
-  const hits = embedding ? await vectorSearch(projectId, embedding, limit) : await keywordSearch(projectId, trimmed, limit);
+  const hits = embedding
+    ? await vectorSearch(projectId, embedding, limit)
+    : await keywordSearch(projectId, trimmed, limit);
 
   return hits.sort((a, b) => b.score - a.score).slice(0, limit);
 }

@@ -13,7 +13,12 @@ import type { ModelEffort, ModelProvider, ThinkingDisplayMode } from '@katnor/co
  * see src/anthropic.ts's module comment for the fuller rationale.
  */
 
-export type ContentBlock = TextBlock | ThinkingBlock | ToolUseBlock | ToolResultBlock | ServerToolBlock;
+export type ContentBlock =
+  | TextBlock
+  | ThinkingBlock
+  | ToolUseBlock
+  | ToolResultBlock
+  | ServerToolBlock;
 
 export interface TextBlock {
   type: 'text';
@@ -131,12 +136,7 @@ export interface StepUsage {
   cacheCreationTokens: number;
 }
 
-export type StepStopReason =
-  | 'end_turn'
-  | 'tool_use'
-  | 'max_tokens'
-  | 'refusal'
-  | 'error';
+export type StepStopReason = 'end_turn' | 'tool_use' | 'max_tokens' | 'refusal' | 'error';
 
 export interface StepResult {
   content: ContentBlock[];

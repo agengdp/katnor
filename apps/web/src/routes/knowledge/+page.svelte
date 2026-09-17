@@ -90,7 +90,9 @@
     pagesLoading = true;
     pagesError = null;
     try {
-      pages = (await trpc().knowledge.listWikiPages.query({ projectId })) as unknown as WikiPageListItem[];
+      pages = (await trpc().knowledge.listWikiPages.query({
+        projectId,
+      })) as unknown as WikiPageListItem[];
     } catch (err) {
       pagesError = describeError(err);
     } finally {
@@ -122,7 +124,7 @@
         projectId,
         path: selectedPath,
         title: editorTitle || selectedPath,
-        content: editorContent
+        content: editorContent,
       });
       await loadPages();
     } catch (err) {
@@ -185,7 +187,7 @@
     concept: '#ec4899',
     task: '#3b82f6',
     bug: '#ef4444',
-    risk: '#ef4444'
+    risk: '#ef4444',
   };
   function colorForType(type: string): string {
     return NODE_TYPE_COLORS[type] ?? '#94a3b8';
@@ -203,13 +205,19 @@
     const center = radius + 60;
     return nodes.map((node, i) => {
       const angle = (2 * Math.PI * i) / n;
-      return { ...node, x: center + radius * Math.cos(angle), y: center + radius * Math.sin(angle) };
+      return {
+        ...node,
+        x: center + radius * Math.cos(angle),
+        y: center + radius * Math.sin(angle),
+      };
     });
   });
   let viewBoxSize = $derived(nodes.length > 0 ? 2 * (Math.max(140, nodes.length * 14) + 60) : 400);
   let positionById = $derived(new Map(positioned.map((n) => [n.id, n])));
   let selectedNode = $derived(positioned.find((n) => n.id === selectedNodeId) ?? null);
-  let selectedNodeEdges = $derived(edges.filter((e) => e.from_id === selectedNodeId || e.to_id === selectedNodeId));
+  let selectedNodeEdges = $derived(
+    edges.filter((e) => e.from_id === selectedNodeId || e.to_id === selectedNodeId),
+  );
 
   // ─── Ask tab ────────────────────────────────────────────────────────────
 
@@ -226,7 +234,10 @@
     askError = null;
     answer = null;
     try {
-      const result = await trpc().knowledge.askWiki.mutate({ projectId, question: question.trim() });
+      const result = await trpc().knowledge.askWiki.mutate({
+        projectId,
+        question: question.trim(),
+      });
       answer = result.answer;
       citations = result.citations as unknown as SearchCitation[];
     } catch (err) {
@@ -271,7 +282,11 @@
 
   $effect(() => {
     const unsub = subscribeToEvents((event) => {
-      if ((event.type === 'wiki_page.updated' || event.type === 'kg_node.upserted') && tab === 'wiki') loadPages();
+      if (
+        (event.type === 'wiki_page.updated' || event.type === 'kg_node.upserted') &&
+        tab === 'wiki'
+      )
+        loadPages();
       if (event.type === 'kg_node.upserted' && tab === 'graph') loadGraph();
     });
     return unsub;
@@ -291,7 +306,9 @@
   {:else if projectsLoading}
     <p class="text-sm text-[var(--color-text-muted)]">Loading projects…</p>
   {:else if projects.length === 0}
-    <p class="text-sm text-[var(--color-text-muted)]">No projects yet - create one on the Projects page first.</p>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      No projects yet - create one on the Projects page first.
+    </p>
   {:else}
     <div class="flex flex-wrap items-center gap-3">
       <label class="flex items-center gap-2 text-sm">
@@ -351,13 +368,16 @@
           {#if pagesLoading}
             <p class="text-sm text-[var(--color-text-muted)]">Loading…</p>
           {:else if pages.length === 0}
-            <p class="text-sm text-[var(--color-text-muted)]">No pages yet - the Librarian creates these as the team works.</p>
+            <p class="text-sm text-[var(--color-text-muted)]">
+              No pages yet - the Librarian creates these as the team works.
+            </p>
           {:else}
             {#each pages as page (page.path)}
               <button
                 type="button"
                 onclick={() => openPage(page)}
-                class="flex flex-col items-start rounded-md px-3 py-2 text-left text-sm {selectedPath === page.path
+                class="flex flex-col items-start rounded-md px-3 py-2 text-left text-sm {selectedPath ===
+                page.path
                   ? 'bg-[var(--color-surface-muted)] font-medium'
                   : 'hover:bg-[var(--color-surface-muted)]'}"
               >
@@ -368,7 +388,9 @@
           {/if}
         </div>
 
-        <div class="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <div
+          class="min-w-0 flex-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+        >
           {#if !selectedPath}
             <p class="text-sm text-[var(--color-text-muted)]">Select a page to view or edit it.</p>
           {:else if editorLoading}
@@ -409,18 +431,27 @@
         <p class="text-sm text-[var(--color-text-muted)]">Loading…</p>
       {:else if nodes.length === 0}
         <p class="text-sm text-[var(--color-text-muted)]">
-          No graph nodes yet for this project - they appear as the Librarian ingests finished tasks, or after a
-          manual "Reindex code" from the Wiki tab.
+          No graph nodes yet for this project - they appear as the Librarian ingests finished tasks,
+          or after a manual "Reindex code" from the Wiki tab.
         </p>
       {:else}
         <div class="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
-          <div class="min-w-0 flex-1 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]">
+          <div
+            class="min-w-0 flex-1 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
+          >
             <svg viewBox={`0 0 ${viewBoxSize} ${viewBoxSize}`} class="h-[560px] w-full">
               {#each edges as edge (edge.id)}
                 {@const from = positionById.get(edge.from_id)}
                 {@const to = positionById.get(edge.to_id)}
                 {#if from && to}
-                  <line x1={from.x} y1={from.y} x2={to.x} y2={to.y} stroke="var(--color-border)" stroke-width="1" />
+                  <line
+                    x1={from.x}
+                    y1={from.y}
+                    x2={to.x}
+                    y2={to.y}
+                    stroke="var(--color-border)"
+                    stroke-width="1"
+                  />
                 {/if}
               {/each}
               {#each positioned as node (node.id)}
@@ -441,13 +472,17 @@
                     stroke={selectedNodeId === node.id ? 'var(--color-text)' : 'none'}
                     stroke-width="2"
                   />
-                  <text x={node.x + 10} y={node.y + 4} font-size="10" fill="var(--color-text)">{node.name}</text>
+                  <text x={node.x + 10} y={node.y + 4} font-size="10" fill="var(--color-text)"
+                    >{node.name}</text
+                  >
                 </g>
               {/each}
             </svg>
           </div>
 
-          <div class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm sm:w-72 sm:shrink-0">
+          <div
+            class="w-full rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm sm:w-72 sm:shrink-0"
+          >
             {#if !selectedNode}
               <p class="text-[var(--color-text-muted)]">Click a node to see its details.</p>
             {:else}
@@ -464,16 +499,21 @@
                 {/if}
                 {#if selectedNodeEdges.length > 0}
                   <div class="flex flex-col gap-1 border-t border-[var(--color-border)] pt-2">
-                    <span class="text-xs font-medium text-[var(--color-text-muted)]">Connections</span>
+                    <span class="text-xs font-medium text-[var(--color-text-muted)]"
+                      >Connections</span
+                    >
                     {#each selectedNodeEdges as edge (edge.id)}
-                      {@const otherId = edge.from_id === selectedNode.id ? edge.to_id : edge.from_id}
+                      {@const otherId =
+                        edge.from_id === selectedNode.id ? edge.to_id : edge.from_id}
                       {@const other = positionById.get(otherId)}
                       <button
                         type="button"
                         onclick={() => (selectedNodeId = otherId)}
                         class="text-left text-xs hover:underline"
                       >
-                        {edge.from_id === selectedNode.id ? '→' : '←'} {edge.type} {other?.name ?? otherId}
+                        {edge.from_id === selectedNode.id ? '→' : '←'}
+                        {edge.type}
+                        {other?.name ?? otherId}
                       </button>
                     {/each}
                   </div>
@@ -506,7 +546,9 @@
         {/if}
 
         {#if answer}
-          <div class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
+          <div
+            class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm"
+          >
             <p class="whitespace-pre-wrap">{answer}</p>
             {#if citations.length > 0}
               <div class="flex flex-col gap-1 border-t border-[var(--color-border)] pt-2">
@@ -518,7 +560,8 @@
                       onclick={() => openCitation(citation)}
                       class="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs hover:bg-[var(--color-surface-muted)]"
                     >
-                      {citation.kind === 'wiki_page' ? '📝' : '🔗'} {citation.title}
+                      {citation.kind === 'wiki_page' ? '📝' : '🔗'}
+                      {citation.title}
                     </button>
                   {/each}
                 </div>

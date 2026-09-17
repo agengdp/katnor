@@ -78,7 +78,9 @@ export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
  * default when present, rather than a deep field-by-field merge - every
  * caller so far only ever writes one of these three objects whole).
  */
-export function mergeCompanySettings(partial: Partial<CompanySettings> | null | undefined): CompanySettings {
+export function mergeCompanySettings(
+  partial: Partial<CompanySettings> | null | undefined,
+): CompanySettings {
   return {
     default_model: partial?.default_model ?? DEFAULT_COMPANY_SETTINGS.default_model,
     budgets: partial?.budgets ?? DEFAULT_COMPANY_SETTINGS.budgets,

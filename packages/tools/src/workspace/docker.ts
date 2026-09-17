@@ -1,6 +1,13 @@
 import { PassThrough } from 'node:stream';
 import Docker from 'dockerode';
-import { repoDirName, type ExecOptions, type ExecResult, type WorkspaceManager, type WorkspaceProject, type WorkspaceRepo } from './types.js';
+import {
+  repoDirName,
+  type ExecOptions,
+  type ExecResult,
+  type WorkspaceManager,
+  type WorkspaceProject,
+  type WorkspaceRepo,
+} from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_OUTPUT_CHARS = 200_000;
@@ -96,10 +103,16 @@ export class DockerWorkspaceManager implements WorkspaceManager {
     }
   }
 
-  async exec(project: WorkspaceProject, command: string, opts: ExecOptions = {}): Promise<ExecResult> {
+  async exec(
+    project: WorkspaceProject,
+    command: string,
+    opts: ExecOptions = {},
+  ): Promise<ExecResult> {
     const container = this.containers.get(project.id);
     if (!container) {
-      throw new Error(`exec: workspace for project "${project.id}" was never ensured - call ensureWorkspace first`);
+      throw new Error(
+        `exec: workspace for project "${project.id}" was never ensured - call ensureWorkspace first`,
+      );
     }
 
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
@@ -157,7 +170,9 @@ export class DockerWorkspaceManager implements WorkspaceManager {
     // tar-stream handling `getArchive()` would require.
     const result = await this.exec(project, `base64 "${WORKSPACE_ROOT}/${relativePath}"`);
     if (result.exitCode !== 0) {
-      throw new Error(`readFile: "${relativePath}" not found in project "${project.id}"'s workspace: ${result.stderr}`);
+      throw new Error(
+        `readFile: "${relativePath}" not found in project "${project.id}"'s workspace: ${result.stderr}`,
+      );
     }
     return Buffer.from(result.stdout, 'base64');
   }

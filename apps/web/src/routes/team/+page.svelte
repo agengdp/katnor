@@ -9,7 +9,7 @@
     type ModelConfig,
     type ModelEffort,
     type ModelProvider,
-    type ThinkingDisplayMode
+    type ThinkingDisplayMode,
   } from '@katnor/core';
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents } from '$lib/eventsSocket';
@@ -74,7 +74,7 @@
     // its entries in order. See the "Model" field below: when this
     // provider is selected, that field switches from free text to a
     // dropdown of existing combo names.
-    combo: 'Combo (fallback chain)'
+    combo: 'Combo (fallback chain)',
   };
 
   function describeError(err: unknown): string {
@@ -102,7 +102,8 @@
     return 'border-[var(--color-border)] text-[var(--color-text)]'; // paused
   }
 
-  const cardBaseClass = 'flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4';
+  const cardBaseClass =
+    'flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4';
 
   function cardClasses(status: AgentStatus): string {
     // Offline agents stay in the list (firing never deletes anyone) but
@@ -152,7 +153,10 @@
     });
     return keys.map((teamId) => ({
       teamId,
-      agents: groups.get(teamId)!.slice().sort((a, b) => a.name.localeCompare(b.name))
+      agents: groups
+        .get(teamId)!
+        .slice()
+        .sort((a, b) => a.name.localeCompare(b.name)),
     }));
   });
 
@@ -166,7 +170,7 @@
       const [agentRows, teamRows, comboRows] = await Promise.all([
         client.agents.list.query(),
         client.teams.list.query(),
-        client.modelCombos.list.query()
+        client.modelCombos.list.query(),
       ]);
       agents = agentRows as unknown as AgentRow[];
       teams = teamRows as unknown as TeamRow[];
@@ -212,7 +216,7 @@
     talking: 'Talking',
     waiting_human: 'Waiting on you',
     blocked: 'Blocked',
-    offline: 'Offline'
+    offline: 'Offline',
   };
 
   const liveStateDotClasses: Record<LiveAgentState, string> = {
@@ -221,7 +225,7 @@
     talking: 'bg-[var(--color-accent)]',
     waiting_human: 'bg-[var(--color-danger)]',
     blocked: 'bg-[var(--color-danger)]',
-    offline: 'bg-[var(--color-text-muted)]'
+    offline: 'bg-[var(--color-text-muted)]',
   };
 
   function liveState(agent: AgentRow): LiveAgentState {
@@ -301,7 +305,7 @@
       max_tokens: agent.model_config.max_tokens,
       tools: agent.tool_allowlist.join(', '),
       budget_daily_usd: Number(agent.budget_daily_usd),
-      status: agent.status
+      status: agent.status,
     };
   }
 
@@ -320,7 +324,7 @@
           bio: draft.bio,
           personality: draft.personality,
           strengths: splitList(draft.strengths),
-          style: draft.style
+          style: draft.style,
         },
         system_prompt: draft.system_prompt,
         model: {
@@ -331,13 +335,13 @@
           max_tokens: draft.max_tokens,
           // Temperature isn't exposed in this form - carry the existing
           // value through so saving doesn't silently clear a custom one.
-          temperature: original?.model_config.temperature
+          temperature: original?.model_config.temperature,
         },
         tools: splitList(draft.tools),
         budget_daily_usd: draft.budget_daily_usd,
         // Never offered for the CEO (see the template), so never sent for
         // the CEO either - keeps their status untouched from this form.
-        ...(original?.is_system ? {} : { status: draft.status })
+        ...(original?.is_system ? {} : { status: draft.status }),
       });
       editSaved = true;
       await refresh();
@@ -383,7 +387,7 @@
       max_tokens: 4096,
       tools: '',
       reports_to: '',
-      team_id: ''
+      team_id: '',
     };
   }
 
@@ -407,7 +411,7 @@
           bio: hireDraft.bio,
           personality: hireDraft.personality,
           strengths: splitList(hireDraft.strengths),
-          style: hireDraft.style
+          style: hireDraft.style,
         },
         system_prompt: hireDraft.system_prompt,
         // Left blank, this is omitted entirely so the server applies its
@@ -420,11 +424,11 @@
           // Kept off this form to keep it shorter - 'summarized' is a
           // reasonable default thinking-display mode for a fresh hire.
           thinking_display: 'summarized',
-          max_tokens: hireDraft.max_tokens
+          max_tokens: hireDraft.max_tokens,
         },
         tools: splitList(hireDraft.tools),
         reports_to: hireDraft.reports_to === '' ? null : hireDraft.reports_to,
-        team_id: hireDraft.team_id === '' ? null : hireDraft.team_id
+        team_id: hireDraft.team_id === '' ? null : hireDraft.team_id,
       });
       hireSuccess = `Hired ${name}.`;
       hireDraft = emptyHireDraft();
@@ -450,7 +454,7 @@
     try {
       await trpc().teams.create.mutate({
         name: teamDraftName.trim(),
-        lead_agent_id: teamDraftLead === '' ? null : teamDraftLead
+        lead_agent_id: teamDraftLead === '' ? null : teamDraftLead,
       });
       teamDraftName = '';
       teamDraftLead = '';
@@ -479,14 +483,18 @@
             </span>
           {/if}
           <span
-            class="rounded-full border px-2 py-0.5 text-xs font-medium capitalize {statusBadgeClasses(agent.status)}"
+            class="rounded-full border px-2 py-0.5 text-xs font-medium capitalize {statusBadgeClasses(
+              agent.status,
+            )}"
           >
             {agent.status}
           </span>
           {#if agent.status === 'active'}
             {@const state = liveState(agent)}
             {@const detail = liveStatusStore.get(agent.id).detail}
-            <span class="flex items-center gap-1.5 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs">
+            <span
+              class="flex items-center gap-1.5 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs"
+            >
               <span class="h-1.5 w-1.5 rounded-full {liveStateDotClasses[state]}"></span>
               {liveStateLabels[state]}{detail ? ` - ${detail}` : ''}
             </span>
@@ -494,7 +502,9 @@
         </div>
         <p class="text-sm text-[var(--color-text-muted)]">{agent.title}</p>
         {#if !agent.is_system}
-          <p class="text-xs text-[var(--color-text-muted)]">Reports to {agentName(agent.reports_to)}</p>
+          <p class="text-xs text-[var(--color-text-muted)]">
+            Reports to {agentName(agent.reports_to)}
+          </p>
         {/if}
         <p class="text-xs text-[var(--color-text-muted)]">
           {providerLabels[agent.model_config.provider]} · {agent.model_config.model}
@@ -507,7 +517,12 @@
           {editDraft?.agentId === agent.id ? 'Close' : 'Edit'}
         </button>
         {#if !agent.is_system}
-          <button type="button" class={dangerButtonClass} onclick={() => fireAgent(agent)} disabled={ui.firing}>
+          <button
+            type="button"
+            class={dangerButtonClass}
+            onclick={() => fireAgent(agent)}
+            disabled={ui.firing}
+          >
             {ui.firing ? 'Firing…' : 'Fire'}
           </button>
         {/if}
@@ -552,7 +567,8 @@
         </label>
         <label class={labelClass}>
           <span class="text-[var(--color-text-muted)]">System prompt</span>
-          <textarea rows="4" bind:value={draft.system_prompt} class="{inputClass} font-mono text-xs"></textarea>
+          <textarea rows="4" bind:value={draft.system_prompt} class="{inputClass} font-mono text-xs"
+          ></textarea>
         </label>
 
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
@@ -607,11 +623,23 @@
           </label>
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Max tokens</span>
-            <input type="number" min="1" step="1" bind:value={draft.max_tokens} class={inputClass} />
+            <input
+              type="number"
+              min="1"
+              step="1"
+              bind:value={draft.max_tokens}
+              class={inputClass}
+            />
           </label>
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Daily budget (USD)</span>
-            <input type="number" min="0" step="0.01" bind:value={draft.budget_daily_usd} class={inputClass} />
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              bind:value={draft.budget_daily_usd}
+              class={inputClass}
+            />
           </label>
         </div>
 
@@ -641,7 +669,9 @@
           <button type="submit" class={primaryButtonClass} disabled={editSaving}>
             {editSaving ? 'Saving…' : 'Save'}
           </button>
-          <button type="button" class={secondaryButtonClass} onclick={() => (editDraft = null)}>Cancel</button>
+          <button type="button" class={secondaryButtonClass} onclick={() => (editDraft = null)}
+            >Cancel</button
+          >
         </div>
       </form>
     {/if}
@@ -652,18 +682,20 @@
   <div>
     <h1 class="text-2xl font-semibold">Team</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
-      Everyone you've hired, who they report to, and which team they're on. Click an agent to edit their persona,
-      model, tools, and budget, or fire them. Hire new agents and create teams below.
+      Everyone you've hired, who they report to, and which team they're on. Click an agent to edit
+      their persona, model, tools, and budget, or fire them. Hire new agents and create teams below.
     </p>
   </div>
 
   {#if loadError}
-    <div class="flex flex-col gap-2 rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm">
+    <div
+      class="flex flex-col gap-2 rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm"
+    >
       <p class="font-medium text-[var(--color-danger)]">Couldn't load the team</p>
       <p class="text-[var(--color-text-muted)]">{loadError}</p>
       <p class="text-[var(--color-text-muted)]">
-        apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong place. This will catch
-        up automatically once it's reachable, or press Reload below.
+        apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong place.
+        This will catch up automatically once it's reachable, or press Reload below.
       </p>
     </div>
   {/if}
@@ -671,7 +703,12 @@
   <section class="flex flex-col gap-4">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">Org chart</h2>
-      <button type="button" class={secondaryButtonClass} onclick={() => refresh(true)} disabled={loading}>
+      <button
+        type="button"
+        class={secondaryButtonClass}
+        onclick={() => refresh(true)}
+        disabled={loading}
+      >
         {loading ? 'Loading…' : 'Reload'}
       </button>
     </div>
@@ -679,7 +716,9 @@
     {#if loading}
       <p class="text-sm text-[var(--color-text-muted)]">Loading…</p>
     {:else if loadError}
-      <p class="text-sm text-[var(--color-text-muted)]">Couldn't load agents - see the error above.</p>
+      <p class="text-sm text-[var(--color-text-muted)]">
+        Couldn't load agents - see the error above.
+      </p>
     {:else if agents.length === 0}
       <p class="text-sm text-[var(--color-text-muted)]">No agents hired yet.</p>
     {:else}
@@ -690,7 +729,9 @@
 
         {#each groupedByTeam as group (group.teamId)}
           <div class="flex flex-col gap-2">
-            <h3 class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]">
+            <h3
+              class="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)]"
+            >
               {teamName(group.teamId)}
             </h3>
             <div class="flex flex-col gap-3">
@@ -704,8 +745,14 @@
     {/if}
   </section>
 
-  <section class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
-    <button type="button" class="flex items-center justify-between gap-3 text-left" onclick={() => (hireOpen = !hireOpen)}>
+  <section
+    class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+  >
+    <button
+      type="button"
+      class="flex items-center justify-between gap-3 text-left"
+      onclick={() => (hireOpen = !hireOpen)}
+    >
       <span class="text-lg font-semibold">Hire manually</span>
       <span class="text-sm text-[var(--color-text-muted)]">{hireOpen ? 'Hide' : 'Show'}</span>
     </button>
@@ -752,7 +799,11 @@
         </label>
         <label class={labelClass}>
           <span class="text-[var(--color-text-muted)]">System prompt</span>
-          <textarea rows="4" bind:value={hireDraft.system_prompt} class="{inputClass} font-mono text-xs"></textarea>
+          <textarea
+            rows="4"
+            bind:value={hireDraft.system_prompt}
+            class="{inputClass} font-mono text-xs"
+          ></textarea>
         </label>
         <label class={labelClass}>
           <span class="text-[var(--color-text-muted)]">Avatar (optional)</span>
@@ -804,7 +855,14 @@
           </label>
           <label class={labelClass}>
             <span class="text-[var(--color-text-muted)]">Max tokens</span>
-            <input type="number" min="1" step="1" required bind:value={hireDraft.max_tokens} class={inputClass} />
+            <input
+              type="number"
+              min="1"
+              step="1"
+              required
+              bind:value={hireDraft.max_tokens}
+              class={inputClass}
+            />
           </label>
         </div>
 
@@ -861,7 +919,9 @@
           class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
         >
           <span class="font-medium">{t.name}</span>
-          <span class="text-sm text-[var(--color-text-muted)]">Lead: {agentName(t.lead_agent_id)}</span>
+          <span class="text-sm text-[var(--color-text-muted)]"
+            >Lead: {agentName(t.lead_agent_id)}</span
+          >
         </div>
       {/each}
     </div>

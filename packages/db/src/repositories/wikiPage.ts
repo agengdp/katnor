@@ -4,8 +4,13 @@ import { wikiPage } from '../schema/index.js';
 import { ulid } from '../ulid.js';
 
 export type WikiPageRow = typeof wikiPage.$inferSelect;
-export type CreateWikiPageInput = Omit<typeof wikiPage.$inferInsert, 'id' | 'created_at' | 'updated_at'>;
-export type UpdateWikiPageInput = Partial<Omit<typeof wikiPage.$inferInsert, 'id' | 'created_at' | 'project_id' | 'path'>>;
+export type CreateWikiPageInput = Omit<
+  typeof wikiPage.$inferInsert,
+  'id' | 'created_at' | 'updated_at'
+>;
+export type UpdateWikiPageInput = Partial<
+  Omit<typeof wikiPage.$inferInsert, 'id' | 'created_at' | 'project_id' | 'path'>
+>;
 
 export async function list(projectId: string): Promise<WikiPageRow[]> {
   return db.select().from(wikiPage).where(eq(wikiPage.project_id, projectId));
@@ -71,7 +76,8 @@ export async function searchByEmbedding(
 ): Promise<WikiPageSearchHit[]> {
   const limit = opts.limit ?? 10;
   const vectorLiteral = `[${embedding.join(',')}]`;
-  const projectFilter = opts.projectId === undefined ? sql`` : sql`and project_id = ${opts.projectId}`;
+  const projectFilter =
+    opts.projectId === undefined ? sql`` : sql`and project_id = ${opts.projectId}`;
 
   const result = await db.execute(sql`
     select *, 1 - (embedding <=> ${vectorLiteral}::vector) as score
@@ -92,7 +98,10 @@ export async function searchByEmbedding(
  * configured - this function is just the cheap first pass to narrow which
  * pages are worth reading.
  */
-export async function searchByKeyword(query: string, opts: { projectId?: string; limit?: number } = {}): Promise<WikiPageRow[]> {
+export async function searchByKeyword(
+  query: string,
+  opts: { projectId?: string; limit?: number } = {},
+): Promise<WikiPageRow[]> {
   const limit = opts.limit ?? 10;
   const pattern = `%${query}%`;
   const conditions = [or(ilike(wikiPage.title, pattern), sql`${wikiPage.path} ilike ${pattern}`)];

@@ -26,7 +26,10 @@ export async function create(input: CreateMessageInput): Promise<MessageRow> {
 }
 
 /** Oldest first - the natural order for a chat thread. Capped at the most recent 200. */
-export async function list(channel_id: string, filter: ListMessagesFilter = {}): Promise<MessageRow[]> {
+export async function list(
+  channel_id: string,
+  filter: ListMessagesFilter = {},
+): Promise<MessageRow[]> {
   if (filter.after_id !== undefined) {
     // ULIDs are lexicographically sortable by creation time (see ../ulid.ts),
     // so "created after id X" is just "id > X" - no need to look X's
@@ -39,5 +42,10 @@ export async function list(channel_id: string, filter: ListMessagesFilter = {}):
       .limit(200);
     return rows;
   }
-  return db.select().from(message).where(eq(message.channel_id, channel_id)).orderBy(asc(message.id)).limit(200);
+  return db
+    .select()
+    .from(message)
+    .where(eq(message.channel_id, channel_id))
+    .orderBy(asc(message.id))
+    .limit(200);
 }

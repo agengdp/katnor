@@ -17,7 +17,9 @@ function strArray(input: Record<string, unknown>, key: string): string[] {
 
 function record(input: Record<string, unknown>, key: string): Record<string, unknown> | undefined {
   const value = input[key];
-  return value && typeof value === 'object' && !Array.isArray(value) ? (value as Record<string, unknown>) : undefined;
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : undefined;
 }
 
 /**
@@ -47,7 +49,10 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
           required: ['bio', 'personality', 'strengths', 'style'],
         },
         system_prompt: { type: 'string' },
-        avatar: { type: 'string', description: 'A sprite id for the 2D office; any short string is fine for now.' },
+        avatar: {
+          type: 'string',
+          description: 'A sprite id for the 2D office; any short string is fine for now.',
+        },
         model: {
           type: 'object',
           properties: {
@@ -62,9 +67,13 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         tools: {
           type: 'array',
           items: { type: 'string' },
-          description: 'Company tool names this hire may use, e.g. ["send_message","read_channel","delegate_task"].',
+          description:
+            'Company tool names this hire may use, e.g. ["send_message","read_channel","delegate_task"].',
         },
-        reports_to: { type: 'string', description: 'Agent id this hire reports to. Defaults to you.' },
+        reports_to: {
+          type: 'string',
+          description: 'Agent id this hire reports to. Defaults to you.',
+        },
         team_id: { type: 'string' },
       },
       required: ['name', 'title', 'persona', 'system_prompt', 'model'],
@@ -89,7 +98,8 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
       const strengths = strArray(persona, 'strengths');
       if (!bio || !personality || !style || strengths.length === 0) {
         return {
-          content: 'hire_agent: persona requires bio, personality, style, and at least one strength.',
+          content:
+            'hire_agent: persona requires bio, personality, style, and at least one strength.',
           isError: true,
         };
       }
@@ -98,16 +108,24 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
       const modelId = str(modelInput, 'model');
       const effort = str(modelInput, 'effort');
       if (!provider || !(MODEL_PROVIDERS as readonly string[]).includes(provider)) {
-        return { content: `hire_agent: model.provider must be one of ${MODEL_PROVIDERS.join(', ')}.`, isError: true };
+        return {
+          content: `hire_agent: model.provider must be one of ${MODEL_PROVIDERS.join(', ')}.`,
+          isError: true,
+        };
       }
       if (!modelId) {
         return { content: 'hire_agent: model.model is required.', isError: true };
       }
       if (!effort || !(MODEL_EFFORTS as readonly string[]).includes(effort)) {
-        return { content: `hire_agent: model.effort must be one of ${MODEL_EFFORTS.join(', ')}.`, isError: true };
+        return {
+          content: `hire_agent: model.effort must be one of ${MODEL_EFFORTS.join(', ')}.`,
+          isError: true,
+        };
       }
       const thinkingDisplayInput = str(modelInput, 'thinking_display');
-      const thinkingDisplay = (THINKING_DISPLAY_MODES as readonly string[]).includes(thinkingDisplayInput ?? '')
+      const thinkingDisplay = (THINKING_DISPLAY_MODES as readonly string[]).includes(
+        thinkingDisplayInput ?? '',
+      )
         ? thinkingDisplayInput!
         : 'omitted';
       const maxTokensRaw = modelInput.max_tokens;
@@ -123,7 +141,13 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         persona: { bio, personality, strengths, style },
         system_prompt: systemPrompt,
         avatar: str(input, 'avatar') ?? 'default',
-        model: { provider, model: modelId, effort, thinking_display: thinkingDisplay, max_tokens: maxTokens },
+        model: {
+          provider,
+          model: modelId,
+          effort,
+          thinking_display: thinkingDisplay,
+          max_tokens: maxTokens,
+        },
         tools: toolsInput,
         reports_to: reportsTo,
         team_id: teamId,
@@ -139,7 +163,10 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
       }
 
       const created = await approvalRepo.create({ run_id: ctx.run.id, kind: 'hire', payload });
-      await eventRepo.append({ type: 'approval.requested', payload: { approval_id: created.id, kind: 'hire' } });
+      await eventRepo.append({
+        type: 'approval.requested',
+        payload: { approval_id: created.id, kind: 'hire' },
+      });
       ctx.pauseRequested = { approvalId: created.id };
       return {
         content: `Hire request for ${name} sent to the owner for approval (pending id ${created.id}). Ending this turn - you'll be re-triggered once decided.`,
@@ -149,7 +176,8 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
 
   {
     name: 'update_agent',
-    description: "Update a colleague's title, persona, system prompt, model, tool allowlist, or budget.",
+    description:
+      "Update a colleague's title, persona, system prompt, model, tool allowlist, or budget.",
     ceoOnly: true,
     inputSchema: {
       type: 'object',
@@ -179,7 +207,8 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
       const systemPrompt = str(input, 'system_prompt');
       if (systemPrompt) patch.system_prompt = systemPrompt;
       if ('tools' in input) patch.tool_allowlist = strArray(input, 'tools');
-      if (typeof input.budget_daily_usd === 'number') patch.budget_daily_usd = String(input.budget_daily_usd);
+      if (typeof input.budget_daily_usd === 'number')
+        patch.budget_daily_usd = String(input.budget_daily_usd);
 
       const updated = await agentRepo.update(agentId, patch);
       if (!updated) {
@@ -239,8 +268,14 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
       if (!name) {
         return { content: 'create_team requires name.', isError: true };
       }
-      const created = await teamRepo.create({ name, lead_agent_id: str(input, 'lead_agent_id') ?? null });
-      await eventRepo.append({ type: 'team.created', payload: { team_id: created.id, name: created.name } });
+      const created = await teamRepo.create({
+        name,
+        lead_agent_id: str(input, 'lead_agent_id') ?? null,
+      });
+      await eventRepo.append({
+        type: 'team.created',
+        payload: { team_id: created.id, name: created.name },
+      });
       return { content: `Created team "${created.name}" (${created.id}).` };
     },
   },

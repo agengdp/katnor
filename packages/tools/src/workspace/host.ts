@@ -1,7 +1,14 @@
 import { spawn } from 'node:child_process';
 import { readFile as fsReadFile, mkdir, access } from 'node:fs/promises';
 import path from 'node:path';
-import { repoDirName, type ExecOptions, type ExecResult, type WorkspaceManager, type WorkspaceProject, type WorkspaceRepo } from './types.js';
+import {
+  repoDirName,
+  type ExecOptions,
+  type ExecResult,
+  type WorkspaceManager,
+  type WorkspaceProject,
+  type WorkspaceRepo,
+} from './types.js';
 
 const DEFAULT_TIMEOUT_MS = 5 * 60 * 1000;
 const MAX_OUTPUT_CHARS = 200_000;
@@ -47,12 +54,18 @@ export class HostWorkspaceManager implements WorkspaceManager {
         { timeoutMs: 3 * 60 * 1000 },
       );
       if (result.exitCode !== 0) {
-        throw new Error(`ensureWorkspace: failed to clone ${repo.owner}/${repo.repo}: ${result.stderr}`);
+        throw new Error(
+          `ensureWorkspace: failed to clone ${repo.owner}/${repo.repo}: ${result.stderr}`,
+        );
       }
     }
   }
 
-  async exec(project: WorkspaceProject, command: string, opts: ExecOptions = {}): Promise<ExecResult> {
+  async exec(
+    project: WorkspaceProject,
+    command: string,
+    opts: ExecOptions = {},
+  ): Promise<ExecResult> {
     const cwd = opts.cwd ? path.join(this.projectDir(project), opts.cwd) : this.projectDir(project);
     const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
 

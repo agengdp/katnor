@@ -4,7 +4,10 @@ import { kgEdge, kgNode } from '../schema/index.js';
 import { ulid } from '../ulid.js';
 
 export type KgEdgeRow = typeof kgEdge.$inferSelect;
-export type CreateKgEdgeInput = Omit<typeof kgEdge.$inferInsert, 'id' | 'created_at' | 'updated_at'>;
+export type CreateKgEdgeInput = Omit<
+  typeof kgEdge.$inferInsert,
+  'id' | 'created_at' | 'updated_at'
+>;
 
 export async function create(input: CreateKgEdgeInput): Promise<KgEdgeRow> {
   const [created] = await db
@@ -16,7 +19,11 @@ export async function create(input: CreateKgEdgeInput): Promise<KgEdgeRow> {
 }
 
 /** The one edge between (from_id, to_id, type), if it already exists - the Librarian's dedupe check before creating a new one. */
-export async function getExisting(fromId: string, toId: string, type: string): Promise<KgEdgeRow | undefined> {
+export async function getExisting(
+  fromId: string,
+  toId: string,
+  type: string,
+): Promise<KgEdgeRow | undefined> {
   const [row] = await db
     .select()
     .from(kgEdge)
@@ -40,7 +47,10 @@ export async function createIfMissing(input: CreateKgEdgeInput): Promise<KgEdgeR
  * should still show up from either project's view).
  */
 export async function listForProject(projectId: string): Promise<KgEdgeRow[]> {
-  const nodes = await db.select({ id: kgNode.id }).from(kgNode).where(eq(kgNode.project_id, projectId));
+  const nodes = await db
+    .select({ id: kgNode.id })
+    .from(kgNode)
+    .where(eq(kgNode.project_id, projectId));
   const nodeIds = nodes.map((n) => n.id);
   if (nodeIds.length === 0) return [];
   return db
@@ -51,5 +61,8 @@ export async function listForProject(projectId: string): Promise<KgEdgeRow[]> {
 
 /** Both directions - a node's full edge set (incoming and outgoing), e.g. for a graph detail panel. */
 export async function listForNode(nodeId: string): Promise<KgEdgeRow[]> {
-  return db.select().from(kgEdge).where(or(eq(kgEdge.from_id, nodeId), eq(kgEdge.to_id, nodeId)));
+  return db
+    .select()
+    .from(kgEdge)
+    .where(or(eq(kgEdge.from_id, nodeId), eq(kgEdge.to_id, nodeId)));
 }

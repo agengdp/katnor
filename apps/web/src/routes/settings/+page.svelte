@@ -4,7 +4,7 @@
     MODEL_COMBO_ENTRY_PROVIDERS,
     type ApprovalMode,
     type ModelComboEntryProvider,
-    type ToolConfigKind
+    type ToolConfigKind,
   } from '@katnor/core';
   import { serverOrigin, trpc } from '$lib/trpc';
 
@@ -33,14 +33,15 @@
     anthropic: 'Anthropic',
     openai_compatible: 'OpenAI-compatible',
     google: 'Google',
-    ollama: 'Ollama (local)'
+    ollama: 'Ollama (local)',
   };
 
   const baseUrlHints: Record<ModelComboEntryProvider, string> = {
     anthropic: 'Defaults to https://api.anthropic.com - only set this for a proxy.',
     openai_compatible: 'e.g. https://api.openai.com/v1, or your own OpenAI-compatible endpoint.',
     google: 'Defaults to the Google AI API - only set this for a proxy.',
-    ollama: 'Defaults to http://localhost:11434/v1 (Ollama\'s own OpenAI-compatible endpoint) - only set this if Ollama runs elsewhere.'
+    ollama:
+      "Defaults to http://localhost:11434/v1 (Ollama's own OpenAI-compatible endpoint) - only set this if Ollama runs elsewhere.",
   };
 
   // Note: "combo" (@katnor/core's MODEL_PROVIDERS) is deliberately absent
@@ -62,7 +63,7 @@
       outputCostPerMtok: '',
       saving: false,
       saveError: null,
-      justSaved: false
+      justSaved: false,
     };
   }
 
@@ -95,8 +96,10 @@
           hasKey: Boolean(existing.hasKey),
           baseUrl: existing.baseUrl ?? '',
           enabled: Boolean(existing.enabled),
-          inputCostPerMtok: existing.inputCostPerMtok != null ? String(existing.inputCostPerMtok) : '',
-          outputCostPerMtok: existing.outputCostPerMtok != null ? String(existing.outputCostPerMtok) : ''
+          inputCostPerMtok:
+            existing.inputCostPerMtok != null ? String(existing.inputCostPerMtok) : '',
+          outputCostPerMtok:
+            existing.outputCostPerMtok != null ? String(existing.outputCostPerMtok) : '',
         };
       });
     } catch (err) {
@@ -160,7 +163,7 @@
         baseUrl: trimmedBaseUrl === '' ? null : trimmedBaseUrl,
         enabled: row.enabled,
         inputCostPerMtok: inputRate,
-        outputCostPerMtok: outputRate
+        outputCostPerMtok: outputRate,
       });
       if (trimmedKey !== '') row.hasKey = true;
       row.apiKey = '';
@@ -237,7 +240,7 @@
         command: command || null,
         url: url || null,
         envSecretRefs: parseSecretRefs(newServerSecretRefs),
-        enabled: true
+        enabled: true,
       });
       newServerName = '';
       newServerCommand = '';
@@ -337,7 +340,7 @@
   const approvalModeLabels: Record<ApprovalMode, string> = {
     auto: 'Auto (never ask)',
     ask_once_per_project: 'Ask once per project',
-    always_ask: 'Always ask'
+    always_ask: 'Always ask',
   };
 
   let companyDailyUsd = $state(0);
@@ -363,8 +366,14 @@
     try {
       const settings = await trpc().settings.getCompanySettings.query();
       companyDailyUsd = settings.budgets.company_daily_usd;
-      projectDailyUsdText = settings.budgets.project_daily_usd !== undefined ? String(settings.budgets.project_daily_usd) : '';
-      agentDailyUsdText = settings.budgets.agent_daily_usd !== undefined ? String(settings.budgets.agent_daily_usd) : '';
+      projectDailyUsdText =
+        settings.budgets.project_daily_usd !== undefined
+          ? String(settings.budgets.project_daily_usd)
+          : '';
+      agentDailyUsdText =
+        settings.budgets.agent_daily_usd !== undefined
+          ? String(settings.budgets.agent_daily_usd)
+          : '';
       hirePolicy = settings.approval_policy.hire;
       toolCallPolicy = settings.approval_policy.tool_call;
       spendPolicy = settings.approval_policy.spend;
@@ -390,7 +399,7 @@
       await trpc().settings.updateBudgets.mutate({
         company_daily_usd: companyDailyUsd,
         project_daily_usd: trimmedProject === '' ? undefined : Number(trimmedProject),
-        agent_daily_usd: trimmedAgent === '' ? undefined : Number(trimmedAgent)
+        agent_daily_usd: trimmedAgent === '' ? undefined : Number(trimmedAgent),
       });
       budgetsSaved = true;
     } catch (err) {
@@ -406,7 +415,11 @@
     budgetsError = null;
     policySaved = false;
     try {
-      await trpc().settings.updateApprovalPolicy.mutate({ hire: hirePolicy, tool_call: toolCallPolicy, spend: spendPolicy });
+      await trpc().settings.updateApprovalPolicy.mutate({
+        hire: hirePolicy,
+        tool_call: toolCallPolicy,
+        spend: spendPolicy,
+      });
       policySaved = true;
     } catch (err) {
       budgetsError = describeError(err);
@@ -453,7 +466,11 @@
     addingUser = true;
     addUserError = null;
     try {
-      await trpc().users.create.mutate({ name: newUserName.trim(), email: newUserEmail.trim(), password: newUserPassword });
+      await trpc().users.create.mutate({
+        name: newUserName.trim(),
+        email: newUserEmail.trim(),
+        password: newUserPassword,
+      });
       newUserName = '';
       newUserEmail = '';
       newUserPassword = '';
@@ -522,7 +539,9 @@
   });
 
   function sanitizeEntries(entries: ComboEntryDraft[]): ComboEntryDraft[] {
-    return entries.map((e) => ({ provider: e.provider, model: e.model.trim() })).filter((e) => e.model.length > 0);
+    return entries
+      .map((e) => ({ provider: e.provider, model: e.model.trim() }))
+      .filter((e) => e.model.length > 0);
   }
 
   async function createCombo(event: SubmitEvent) {
@@ -630,7 +649,9 @@
 
     <div class="flex flex-col gap-4">
       {#each rows as row (row.provider)}
-        <div class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+        <div
+          class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+        >
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-medium">{providerLabels[row.provider]}</h3>
             <span class="text-xs text-[var(--color-text-muted)]">
@@ -738,15 +759,21 @@
 
     <div class="flex flex-col gap-3">
       {#each toolConfigs as row (row.id)}
-        <div class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
+        <div
+          class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm"
+        >
           <div class="flex flex-wrap items-center justify-between gap-2">
             <h3 class="font-medium">{row.name}</h3>
-            <span class="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]">
+            <span
+              class="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs text-[var(--color-text-muted)]"
+            >
               {row.kind}
             </span>
           </div>
           {#if row.command}
-            <p class="text-xs text-[var(--color-text-muted)]">Command: <code>{row.command}</code></p>
+            <p class="text-xs text-[var(--color-text-muted)]">
+              Command: <code>{row.command}</code>
+            </p>
           {/if}
           {#if row.url}
             <p class="text-xs text-[var(--color-text-muted)]">URL: <code>{row.url}</code></p>
@@ -758,7 +785,12 @@
           {/if}
           <div class="flex items-center gap-3">
             <label class="flex items-center gap-2 text-xs">
-              <input type="checkbox" checked={row.enabled} onchange={() => toggleServerEnabled(row)} class="h-4 w-4" />
+              <input
+                type="checkbox"
+                checked={row.enabled}
+                onchange={() => toggleServerEnabled(row)}
+                class="h-4 w-4"
+              />
               <span>Enabled</span>
             </label>
             <button
@@ -775,7 +807,10 @@
       {/each}
     </div>
 
-    <form class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4" onsubmit={createServer}>
+    <form
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      onsubmit={createServer}
+    >
       <h3 class="text-sm font-semibold">Add a server</h3>
       <label class="flex flex-col gap-1 text-sm">
         <span class="text-[var(--color-text-muted)]">Name</span>
@@ -796,7 +831,9 @@
         />
       </label>
       <label class="flex flex-col gap-1 text-sm">
-        <span class="text-[var(--color-text-muted)]">URL (HTTP/SSE server, instead of a command)</span>
+        <span class="text-[var(--color-text-muted)]"
+          >URL (HTTP/SSE server, instead of a command)</span
+        >
         <input
           type="text"
           bind:value={newServerUrl}
@@ -805,7 +842,9 @@
         />
       </label>
       <label class="flex flex-col gap-1 text-sm">
-        <span class="text-[var(--color-text-muted)]">Env secret names (comma-separated, e.g. GITHUB_TOKEN)</span>
+        <span class="text-[var(--color-text-muted)]"
+          >Env secret names (comma-separated, e.g. GITHUB_TOKEN)</span
+        >
         <input
           type="text"
           bind:value={newServerSecretRefs}
@@ -851,7 +890,9 @@
 
     <div class="flex flex-col gap-2">
       {#each secrets as row (row.name)}
-        <div class="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm">
+        <div
+          class="flex items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3 text-sm"
+        >
           <span class="font-medium">{row.name}</span>
           <button
             type="button"
@@ -866,7 +907,10 @@
       {/each}
     </div>
 
-    <form class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4" onsubmit={saveSecret}>
+    <form
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      onsubmit={saveSecret}
+    >
       <h3 class="text-sm font-semibold">Add or replace a secret</h3>
       <div class="grid gap-3 sm:grid-cols-2">
         <label class="flex flex-col gap-1 text-sm">
@@ -917,10 +961,10 @@
     </div>
     <p class="text-sm text-[var(--color-text-muted)]">
       Daily budgets are hard stops (PLAN.md's Phase 5) - a run that would push the company, its own
-      agent, or its project over its daily budget doesn't start. What happens next follows the "Spend
-      beyond budget" policy below: paused and sent to your Inbox to approve or reject, or - only under
-      "Auto" - let through anyway. Leave project/agent blank for no per-project/per-agent cap beyond
-      each agent's own budget (set per-agent on the Team page).
+      agent, or its project over its daily budget doesn't start. What happens next follows the
+      "Spend beyond budget" policy below: paused and sent to your Inbox to approve or reject, or -
+      only under "Auto" - let through anyway. Leave project/agent blank for no per-project/per-agent
+      cap beyond each agent's own budget (set per-agent on the Team page).
     </p>
 
     {#if budgetsError}
@@ -987,7 +1031,10 @@
       <div class="grid gap-3 sm:grid-cols-3">
         <label class="flex flex-col gap-1 text-sm">
           <span class="text-[var(--color-text-muted)]">Hiring</span>
-          <select bind:value={hirePolicy} class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm">
+          <select
+            bind:value={hirePolicy}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm"
+          >
             {#each APPROVAL_MODES as mode (mode)}
               <option value={mode}>{approvalModeLabels[mode]}</option>
             {/each}
@@ -995,7 +1042,10 @@
         </label>
         <label class="flex flex-col gap-1 text-sm">
           <span class="text-[var(--color-text-muted)]">Dangerous tool calls (e.g. git push)</span>
-          <select bind:value={toolCallPolicy} class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm">
+          <select
+            bind:value={toolCallPolicy}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm"
+          >
             {#each APPROVAL_MODES as mode (mode)}
               <option value={mode}>{approvalModeLabels[mode]}</option>
             {/each}
@@ -1003,7 +1053,10 @@
         </label>
         <label class="flex flex-col gap-1 text-sm">
           <span class="text-[var(--color-text-muted)]">Spend beyond budget</span>
-          <select bind:value={spendPolicy} class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm">
+          <select
+            bind:value={spendPolicy}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm"
+          >
             {#each APPROVAL_MODES as mode (mode)}
               <option value={mode}>{approvalModeLabels[mode]}</option>
             {/each}
@@ -1030,8 +1083,8 @@
     <p class="text-sm text-[var(--color-text-muted)]">
       Downloads a single JSON file with every core table (company, teams, agents, projects, tasks,
       runs, messages, the knowledge graph, wiki pages, ...) plus every project's wiki files.
-      Provider/secret values are never included - only whether one is set. Artifact file bytes
-      (PRs, diffs, screenshots) aren't included either, just their metadata; the underlying storage
+      Provider/secret values are never included - only whether one is set. Artifact file bytes (PRs,
+      diffs, screenshots) aren't included either, just their metadata; the underlying storage
       backend (local disk or MinIO) needs its own backup.
     </p>
     <div>
@@ -1069,7 +1122,9 @@
 
     <div class="flex flex-col gap-2">
       {#each users as row (row.id)}
-        <div class="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+        <div
+          class="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+        >
           <div class="flex flex-col">
             <span class="text-sm font-medium">{row.name}</span>
             <span class="text-xs text-[var(--color-text-muted)]">{row.email}</span>
@@ -1078,7 +1133,9 @@
             type="button"
             onclick={() => removeUser(row.id)}
             disabled={removingIds[row.id] || users.length <= 1}
-            title={users.length <= 1 ? "Can't remove the last remaining account" : 'Remove this teammate'}
+            title={users.length <= 1
+              ? "Can't remove the last remaining account"
+              : 'Remove this teammate'}
             class="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
           >
             {removingIds[row.id] ? 'Removing…' : 'Remove'}
@@ -1166,12 +1223,16 @@
 
     <div class="flex flex-col gap-2">
       {#each combos as row (row.id)}
-        <div class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3">
+        <div
+          class="flex flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+        >
           <div class="flex items-center justify-between gap-3">
             <div class="flex flex-col">
               <span class="text-sm font-medium">{row.name}</span>
               <span class="text-xs text-[var(--color-text-muted)]">
-                {row.entries.map((e) => `${providerLabels[e.provider] ?? e.provider}/${e.model}`).join(' → ')}
+                {row.entries
+                  .map((e) => `${providerLabels[e.provider] ?? e.provider}/${e.model}`)
+                  .join(' → ')}
               </span>
             </div>
             <div class="flex shrink-0 gap-2">
@@ -1230,7 +1291,8 @@
                     />
                     <button
                       type="button"
-                      onclick={() => (editComboEntries = editComboEntries.filter((_, idx) => idx !== i))}
+                      onclick={() =>
+                        (editComboEntries = editComboEntries.filter((_, idx) => idx !== i))}
                       disabled={editComboEntries.length <= 1}
                       class="shrink-0 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-xs disabled:opacity-50"
                     >

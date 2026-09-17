@@ -14,7 +14,7 @@ const SYSTEM_PROMPT = [
   "Answer the user's question using ONLY the provided context (this project's wiki pages and",
   'knowledge graph entries). Cite what you used by its bracketed id, e.g. "[wiki:auth.md]" or',
   '"[node:abc123]", inline in your answer next to the claim it supports. If the context does not',
-  "answer the question, say so plainly rather than guessing - do not use outside knowledge.",
+  'answer the question, say so plainly rather than guessing - do not use outside knowledge.',
 ].join('\n');
 
 async function renderContext(hits: SearchCitation[], projectId: string): Promise<string> {
@@ -24,7 +24,9 @@ async function renderContext(hits: SearchCitation[], projectId: string): Promise
         return `[node:${hit.id}] ${hit.title}${hit.snippet ? ` - ${hit.snippet}` : ''}`;
       }
       const content = hit.path ? await wikiStorage.readPage(projectId, hit.path) : null;
-      const body = content ? content.slice(0, MAX_PAGE_CHARS) : (hit.snippet ?? '(content unavailable)');
+      const body = content
+        ? content.slice(0, MAX_PAGE_CHARS)
+        : (hit.snippet ?? '(content unavailable)');
       return `[wiki:${hit.path ?? hit.id}] ${hit.title}\n${body}`;
     }),
   );
@@ -40,7 +42,10 @@ async function renderContext(hits: SearchCitation[], projectId: string): Promise
  * `knowledge.askWiki` procedure (the dashboard's ask box), so both give
  * the same answer to the same question.
  */
-export async function answerWithCitations(projectId: string, question: string): Promise<WikiAnswer> {
+export async function answerWithCitations(
+  projectId: string,
+  question: string,
+): Promise<WikiAnswer> {
   const trimmed = question.trim();
   if (trimmed.length === 0) {
     return { answer: 'Ask a specific question and I can look it up.', citations: [] };
@@ -49,7 +54,8 @@ export async function answerWithCitations(projectId: string, question: string): 
   const hits = await searchKnowledge(projectId, trimmed, 8);
   if (hits.length === 0) {
     return {
-      answer: "I don't have anything in this project's wiki or knowledge graph relevant to that yet.",
+      answer:
+        "I don't have anything in this project's wiki or knowledge graph relevant to that yet.",
       citations: [],
     };
   }
@@ -61,7 +67,14 @@ export async function answerWithCitations(projectId: string, question: string): 
   try {
     result = await provider.step({
       systemPrompt: SYSTEM_PROMPT,
-      messages: [{ role: 'user', content: [{ type: 'text', text: `## Context\n\n${context}\n\n## Question\n\n${trimmed}` }] }],
+      messages: [
+        {
+          role: 'user',
+          content: [
+            { type: 'text', text: `## Context\n\n${context}\n\n## Question\n\n${trimmed}` },
+          ],
+        },
+      ],
       tools: [],
       model: ASK_MODEL,
       effort: 'medium',
@@ -81,6 +94,9 @@ export async function answerWithCitations(projectId: string, question: string): 
   }
 
   const textBlock = result.content.find((block) => block.type === 'text');
-  const answer = textBlock && textBlock.type === 'text' && textBlock.text.trim().length > 0 ? textBlock.text : '(no answer text returned)';
+  const answer =
+    textBlock && textBlock.type === 'text' && textBlock.text.trim().length > 0
+      ? textBlock.text
+      : '(no answer text returned)';
   return { answer, citations: hits };
 }

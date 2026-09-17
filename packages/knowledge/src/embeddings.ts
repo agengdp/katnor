@@ -51,7 +51,9 @@ export async function embed(text: string): Promise<number[] | null> {
       body: JSON.stringify({ model: EMBEDDING_MODEL, input: text }),
     });
     if (!response.ok) {
-      console.error(`[knowledge/embeddings] OpenAI embeddings request failed: ${response.status} ${response.statusText}`);
+      console.error(
+        `[knowledge/embeddings] OpenAI embeddings request failed: ${response.status} ${response.statusText}`,
+      );
       return null;
     }
     const body = (await response.json()) as OpenAiEmbeddingResponse;

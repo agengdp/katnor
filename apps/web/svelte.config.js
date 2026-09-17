@@ -10,8 +10,8 @@ const config = {
   kit: {
     // adapter-node produces a standalone Node server (`build/index.js`) that
     // apps/web's Dockerfile runs directly - see PLAN.md section 2.2.
-    adapter: adapter()
-  }
+    adapter: adapter(),
+  },
 };
 
 export default config;

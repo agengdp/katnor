@@ -9,9 +9,9 @@ const webPort = Number(process.env.WEB_PORT) || 5173;
 export default defineConfig({
   plugins: [sveltekit()],
   server: {
-    port: webPort
+    port: webPort,
   },
   preview: {
-    port: webPort
-  }
+    port: webPort,
+  },
 });

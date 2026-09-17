@@ -60,7 +60,8 @@ async function readConfig(): Promise<ResolvedConfig | { error: string }> {
     const row = await providerConfigRepo.getByProvider('google');
     if (!row) {
       return {
-        error: 'No "google" provider is configured yet - add an API key under Settings > Providers.',
+        error:
+          'No "google" provider is configured yet - add an API key under Settings > Providers.',
       };
     }
     if (!row.enabled) {
@@ -82,9 +83,10 @@ async function readConfig(): Promise<ResolvedConfig | { error: string }> {
   }
 }
 
-function toGeminiToolChoice(
-  choice: ToolChoice | undefined,
-): { mode: 'AUTO' | 'ANY'; allowedFunctionNames?: string[] } {
+function toGeminiToolChoice(choice: ToolChoice | undefined): {
+  mode: 'AUTO' | 'ANY';
+  allowedFunctionNames?: string[];
+} {
   if (choice?.type === 'tool') {
     return { mode: 'ANY', allowedFunctionNames: [choice.name] };
   }
@@ -97,7 +99,11 @@ function toGeminiTools(tools: ProviderTool[]): unknown[] {
   // ./openaiCompatible.ts's toOpenAiTools.
   const declarations = tools
     .filter((tool) => !tool.serverType)
-    .map((tool) => ({ name: tool.name, description: tool.description, parameters: tool.inputSchema }));
+    .map((tool) => ({
+      name: tool.name,
+      description: tool.description,
+      parameters: tool.inputSchema,
+    }));
   return declarations.length > 0 ? [{ functionDeclarations: declarations }] : [];
 }
 
@@ -144,7 +150,10 @@ function toGeminiContents(messages: ProviderMessage[]): GeminiContent[] {
         // string - our ToolResultBlock.content is always a plain string
         // (see ./types.ts), so it's wrapped rather than parsed/guessed at.
         parts.push({
-          functionResponse: { name, response: { result: block.content, isError: block.isError ?? false } },
+          functionResponse: {
+            name,
+            response: { result: block.content, isError: block.isError ?? false },
+          },
         });
       }
       // 'thinking'/'server_tool' blocks have no Gemini equivalent this
@@ -236,7 +245,10 @@ export class GoogleProvider implements LLMProvider {
         ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
       },
       ...(geminiTools.length > 0
-        ? { tools: geminiTools, toolConfig: { functionCallingConfig: toGeminiToolChoice(input.toolChoice) } }
+        ? {
+            tools: geminiTools,
+            toolConfig: { functionCallingConfig: toGeminiToolChoice(input.toolChoice) },
+          }
         : {}),
     };
 

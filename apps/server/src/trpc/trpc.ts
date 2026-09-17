@@ -16,7 +16,7 @@ export const publicProcedure = t.procedure;
 
 /**
  * A procedure that 401s (as a `TRPCError`) unless the request carried a
- * valid `katnor_session` cookie. Used by every settings.*/users.*
+ * valid `katnor_session` cookie. Used by every settings/users router
  * procedure and most mutations elsewhere - some user must be logged in to
  * read or change things (PLAN.md Phase 5's multi-user auth - any logged-in
  * user, not a distinct "owner" role; see @katnor/core's schemas/user.ts).

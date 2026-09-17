@@ -94,7 +94,10 @@ export async function getOrCreateDm(agentId: string): Promise<ChannelRow> {
  * Returns the task-thread channel for `taskId`, creating it if it doesn't
  * exist yet. One task has at most one thread.
  */
-export async function getOrCreateTaskThread(taskId: string, projectId: string): Promise<ChannelRow> {
+export async function getOrCreateTaskThread(
+  taskId: string,
+  projectId: string,
+): Promise<ChannelRow> {
   const [existing] = await db.select().from(channel).where(eq(channel.task_id, taskId)).limit(1);
   if (existing) return existing;
 

@@ -159,6 +159,35 @@ const THINKING_UPDATES_BETA = 'thinking-display-updates-2026-08-18';
 /** Anthropic requires a task budget of at least this many tokens. */
 const MIN_TASK_BUDGET_TOKENS = 20_000;
 
+/**
+ * The adaptive thinking config - `{ type: 'adaptive' }` - which is the
+ * current API shape for every model this adapter targets. It is declared
+ * here because @anthropic-ai/sdk 0.68.0's own `BetaThinkingConfigParam`
+ * still models only the older `enabled`/`disabled` pair, so assigning an
+ * adaptive config to it does not typecheck.
+ *
+ * The wire payload is what matters and it is correct: the SDK serializes
+ * `thinking` through to the request body untouched. Do NOT "fix" this by
+ * reverting to `{ type: 'enabled', budget_tokens: N }` - that form is
+ * rejected with a 400 on every model in resolveModelProfile's adaptive
+ * branch. Delete this type and use the SDK's own once the dependency is
+ * bumped to a release that knows about adaptive thinking.
+ */
+type AdaptiveThinkingConfig = {
+  type: 'adaptive';
+  display?: 'summarized' | 'updates';
+};
+
+/**
+ * `stop_details` is GA (Opus 4.7 and later) and is populated only when
+ * `stop_reason === 'refusal'`, but 0.68.0's `BetaMessage` predates the
+ * field. Same situation as `AdaptiveThinkingConfig` above: the field is
+ * present on the response at runtime, just absent from the pinned types.
+ */
+type WithStopDetails = {
+  stop_details?: { category?: string | null } | null;
+};
+
 /** Maps this system's provider-agnostic `ToolChoice` to Anthropic's `tool_choice` request field. */
 function toAnthropicToolChoice(choice: ToolChoice | undefined): Anthropic.Beta.BetaToolChoice {
   if (choice?.type === 'tool') {
@@ -168,7 +197,10 @@ function toAnthropicToolChoice(choice: ToolChoice | undefined): Anthropic.Beta.B
 }
 
 /** The concrete Anthropic tool `type` string for a `ProviderTool.serverType` tag, per model generation. */
-function resolveServerToolType(tag: 'web_search' | 'web_fetch', generation: ModelProfile['webToolGeneration']): string {
+function resolveServerToolType(
+  tag: 'web_search' | 'web_fetch',
+  generation: ModelProfile['webToolGeneration'],
+): string {
   if (tag === 'web_search') {
     return generation === 'dynamic' ? 'web_search_20260209' : 'web_search_20250305';
   }
@@ -178,7 +210,10 @@ function resolveServerToolType(tag: 'web_search' | 'web_fetch', generation: Mode
   return generation === 'dynamic' ? 'web_fetch_20260209' : 'web_fetch_20250910';
 }
 
-function toAnthropicTools(tools: ProviderTool[], profile: ModelProfile): Anthropic.Beta.BetaToolUnion[] {
+function toAnthropicTools(
+  tools: ProviderTool[],
+  profile: ModelProfile,
+): Anthropic.Beta.BetaToolUnion[] {
   return tools.map((tool) => {
     // A server-side tool (web_search/web_fetch - PLAN.md 4.3) is declared
     // by type+name alone; Anthropic supplies the real schema, so
@@ -232,14 +267,19 @@ function toAnthropicMessage(message: ProviderMessage): Anthropic.Beta.BetaMessag
         return block.raw as Anthropic.Beta.BetaContentBlockParam;
       default: {
         const exhaustive: never = block;
-        throw new Error(`toAnthropicMessage: unhandled content block ${JSON.stringify(exhaustive)}`);
+        throw new Error(
+          `toAnthropicMessage: unhandled content block ${JSON.stringify(exhaustive)}`,
+        );
       }
     }
   });
   // A message made only of dropped (signature-less) thinking blocks would
   // otherwise become empty content, which the API rejects - guard with a
   // single empty text block in that (rare) case.
-  return { role: message.role, content: content.length > 0 ? content : [{ type: 'text', text: '' }] };
+  return {
+    role: message.role,
+    content: content.length > 0 ? content : [{ type: 'text', text: '' }],
+  };
 }
 
 function fromAnthropicContent(blocks: Anthropic.Beta.BetaContentBlock[]): ContentBlock[] {
@@ -320,11 +360,11 @@ export class AnthropicProvider implements LLMProvider {
     const profile = resolveModelProfile(input.model);
     const betas: string[] = [];
 
-    let thinking: Anthropic.Beta.BetaThinkingConfigParam | undefined;
+    let thinking: AdaptiveThinkingConfig | undefined;
     if (profile.thinkingMode === 'adaptive') {
       if (input.thinkingDisplay === 'updated') {
         betas.push(THINKING_UPDATES_BETA);
-        thinking = { type: 'adaptive', display: 'updates' } as Anthropic.Beta.BetaThinkingConfigParam;
+        thinking = { type: 'adaptive', display: 'updates' };
       } else if (input.thinkingDisplay === 'summarized') {
         thinking = { type: 'adaptive', display: 'summarized' };
       } else {
@@ -340,7 +380,11 @@ export class AnthropicProvider implements LLMProvider {
     if (profile.supportsEffort) {
       outputConfig.effort = input.effort;
     }
-    if (profile.supportsTaskBudget && input.taskBudgetTokens && input.taskBudgetTokens >= MIN_TASK_BUDGET_TOKENS) {
+    if (
+      profile.supportsTaskBudget &&
+      input.taskBudgetTokens &&
+      input.taskBudgetTokens >= MIN_TASK_BUDGET_TOKENS
+    ) {
       betas.push(TASK_BUDGET_BETA);
       outputConfig.task_budget = { type: 'tokens', total: input.taskBudgetTokens };
     }
@@ -362,11 +406,19 @@ export class AnthropicProvider implements LLMProvider {
     const requestBody = {
       model: input.model,
       max_tokens: input.maxTokens,
-      system: [{ type: 'text' as const, text: input.systemPrompt, cache_control: { type: 'ephemeral' as const } }],
+      system: [
+        {
+          type: 'text' as const,
+          text: input.systemPrompt,
+          cache_control: { type: 'ephemeral' as const },
+        },
+      ],
       tools: toAnthropicTools(input.tools, profile),
       tool_choice: toAnthropicToolChoice(input.toolChoice),
       messages: input.messages.map(toAnthropicMessage),
-      ...(thinking ? { thinking } : {}),
+      ...(thinking
+        ? { thinking: thinking as unknown as Anthropic.Beta.BetaThinkingConfigParam }
+        : {}),
       ...(Object.keys(outputConfig).length > 0 ? { output_config: outputConfig } : {}),
       ...(fallbacks ? { fallbacks } : {}),
       ...(input.temperature !== undefined ? { temperature: input.temperature } : {}),
@@ -402,7 +454,10 @@ export class AnthropicProvider implements LLMProvider {
       stopReason: toStopReason(response.stop_reason),
       usage,
       costUsd: estimateCostUsd(input.model, usage),
-      refusalCategory: response.stop_reason === 'refusal' ? (response.stop_details?.category ?? null) : undefined,
+      refusalCategory:
+        response.stop_reason === 'refusal'
+          ? ((response as WithStopDetails).stop_details?.category ?? null)
+          : undefined,
     };
   }
 }

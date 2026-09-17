@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches:
-      - "**"
+      - '**'
   pull_request:
     branches:
-      - "**"
+      - '**'
 
 jobs:
   ci:
@@ -18,15 +18,18 @@ jobs:
       - name: Setup pnpm
         uses: pnpm/action-setup@v4
 
+      # NOTE: no pnpm-lock.yaml is committed yet (Phase 0 scaffold only), so we
+      # cannot use --frozen-lockfile, and actions/setup-node's own `cache: pnpm`
+      # option requires one too - it hashes the lockfile to key the cache and
+      # hard-fails ("Dependencies lock file is not found") without it, which is
+      # exactly what broke every run of this workflow so far. Once a lockfile
+      # is committed: add `cache: pnpm` back here, and switch the install step
+      # below to `pnpm install --frozen-lockfile`.
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
           node-version: 22
-          cache: pnpm
 
-      # NOTE: no pnpm-lock.yaml is committed yet (Phase 0 scaffold only), so we
-      # cannot use --frozen-lockfile. Once a lockfile is committed, switch this
-      # to `pnpm install --frozen-lockfile`.
       - name: Install dependencies
         run: pnpm install
 

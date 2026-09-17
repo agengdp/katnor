@@ -11,6 +11,18 @@ import { createContext } from './trpc/context.js';
 import { appRouter } from './trpc/router.js';
 import { startEventsWebSocketServer } from './ws.js';
 
+/**
+ * apps/web types its tRPC client with `import type { AppRouter } from
+ * '@katnor/server'` (apps/web/src/lib/trpc.ts), and this package's `types`
+ * entry is this file - so without this re-export that import resolves to
+ * nothing. `createTRPCClient<AppRouter>` then collapses into tRPC's
+ * built-in-collision error type (every reserved client method reported as
+ * colliding at once), and every `trpc().<router>.<procedure>` call in the
+ * web app fails to typecheck. Type-only, so it is erased at build time and
+ * none of this module's server-starting code follows the import.
+ */
+export type { AppRouter } from './trpc/router.js';
+
 const app = new Hono();
 
 // Permissive, credentialed CORS for the tRPC API: apps/web is a separate
@@ -49,7 +61,13 @@ app.get('/artifacts/raw/:key', async (c) => {
   }
   const row = await artifactRepo.getByStorageKey(key);
   c.header('Content-Type', row?.mime ?? 'application/octet-stream');
-  return c.body(content);
+  // Handed over as a plain Uint8Array rather than as the Buffer
+  // `getStorage().get` returns. Node types Buffer as `Buffer<ArrayBufferLike>`,
+  // and since TypeScript 5.7 made ArrayBufferView generic that no longer
+  // satisfies Hono's BodyInit parameter - ArrayBufferLike also covers
+  // SharedArrayBuffer, which is not valid there. The bytes are unchanged; the
+  // conversion costs one copy, which beats casting the mismatch away.
+  return c.body(new Uint8Array(content));
 });
 
 /**
@@ -98,7 +116,9 @@ const httpServer = serve(
     port: env.SERVER_PORT,
   },
   (info) => {
-    console.log(`[server] katnor server listening on http://localhost:${info.port} (tRPC at /trpc, WS at /ws/events)`);
+    console.log(
+      `[server] katnor server listening on http://localhost:${info.port} (tRPC at /trpc, WS at /ws/events)`,
+    );
   },
 );
 

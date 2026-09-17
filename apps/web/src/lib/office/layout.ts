@@ -70,13 +70,56 @@ export function deskPositions(count: number): Point[] {
 
 export function zones(): Zone[] {
   return [
-    { id: 'reception', label: 'Reception (Inbox)', icon: '📥', x: 30, y: 30, width: 110, height: 90, href: '/inbox' },
-    { id: 'whiteboard', label: 'Whiteboard (Projects)', icon: '📋', x: CANVAS_WIDTH - 240, y: 30, width: 90, height: 70, href: '/projects' },
-    { id: 'bookshelf', label: 'Bookshelf (Knowledge)', icon: '📚', x: CANVAS_WIDTH - 140, y: 30, width: 90, height: 70, href: '/knowledge' },
-    { id: 'rack', label: 'Server rack (Runs)', icon: '⚙️', x: CANVAS_WIDTH - 240, y: 120, width: 90, height: 70, href: '/runs' },
+    {
+      id: 'reception',
+      label: 'Reception (Inbox)',
+      icon: '📥',
+      x: 30,
+      y: 30,
+      width: 110,
+      height: 90,
+      href: '/inbox',
+    },
+    {
+      id: 'whiteboard',
+      label: 'Whiteboard (Projects)',
+      icon: '📋',
+      x: CANVAS_WIDTH - 240,
+      y: 30,
+      width: 90,
+      height: 70,
+      href: '/projects',
+    },
+    {
+      id: 'bookshelf',
+      label: 'Bookshelf (Knowledge)',
+      icon: '📚',
+      x: CANVAS_WIDTH - 140,
+      y: 30,
+      width: 90,
+      height: 70,
+      href: '/knowledge',
+    },
+    {
+      id: 'rack',
+      label: 'Server rack (Runs)',
+      icon: '⚙️',
+      x: CANVAS_WIDTH - 240,
+      y: 120,
+      width: 90,
+      height: 70,
+      href: '/runs',
+    },
   ];
 }
 
-export function pointInRect(x: number, y: number, rectX: number, rectY: number, width: number, height: number): boolean {
+export function pointInRect(
+  x: number,
+  y: number,
+  rectX: number,
+  rectY: number,
+  width: number,
+  height: number,
+): boolean {
   return x >= rectX && x <= rectX + width && y >= rectY && y <= rectY + height;
 }

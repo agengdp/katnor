@@ -41,7 +41,7 @@ could not be installed. As a result:
   giant file. `src/schema/columns.ts` factors out the `id` / `created_at` / `updated_at` columns
   every table has. `src/schema/enums.ts` defines a Postgres `pgEnum` for every fixed-vocabulary
   column, reusing the enum arrays exported by `@katnor/core` as the single source of truth for
-  *which values are valid* (this package remains the source of truth for *how they're stored*).
+  _which values are valid_ (this package remains the source of truth for _how they're stored_).
   `src/schema/vector.ts` implements the `vector(n)` pgvector column type by hand via drizzle's
   `customType` - see the comment in that file for why, instead of importing a `vector()` helper
   directly. `src/schema/relations.ts` holds every `relations()` definition in one file, separate
@@ -53,7 +53,7 @@ could not be installed. As a result:
   `id` column is `text`, not a DB-generated serial/uuid), so every repository's `create()` calls
   `ulid()` itself before inserting.
 - `src/applyPostMigrate.ts` - one-off SQL that isn't a schema migration: `CREATE EXTENSION IF NOT
-  EXISTS vector;`, and the function + trigger that `pg_notify`s the `katnor_events` channel on every
+EXISTS vector;`, and the function + trigger that `pg_notify`s the `katnor_events` channel on every
   insert into `event`.
 - `src/listen.ts` - `subscribeToEvents()`, a `LISTEN katnor_events` subscriber for the server's event
   fan-out. Uses the `pg` driver rather than `postgres` - see the comment in that file for why.
@@ -78,6 +78,6 @@ could not be installed. As a result:
 - **LISTEN/NOTIFY driver**: `src/listen.ts` uses `pg` (+ `@types/pg`), added as an extra dependency
   of this package specifically for that one file, instead of `postgres` (postgres.js, used
   everywhere else in this package). `pg`'s `client.query('LISTEN ...')` + `client.on('notification',
-  ...)` API has been stable for years; this was written without registry access to double-check the
+...)` API has been stable for years; this was written without registry access to double-check the
   exact shape of postgres.js's own `.listen()` sugar against the pinned `postgres@^3.4.5`, so
   correctness was preferred over forcing a single driver.

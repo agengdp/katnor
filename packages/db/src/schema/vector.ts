@@ -43,8 +43,7 @@ export const vector = customType<{
   },
   fromDriver(value: string): number[] {
     const trimmed = value.trim();
-    const inner =
-      trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
+    const inner = trimmed.startsWith('[') && trimmed.endsWith(']') ? trimmed.slice(1, -1) : trimmed;
     if (inner.length === 0) return [];
     return inner.split(',').map(Number);
   },

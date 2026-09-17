@@ -61,7 +61,11 @@ function normalizePath(rawPath: string): string {
 }
 
 /** Resolves a relative import specifier (from `fromPath`) against the repo's known file paths, trying common extensions and `/index.*`. Non-relative (package) specifiers are never resolved - see the module doc comment. */
-function resolveImport(fromPath: string, specifier: string, knownPaths: Set<string>): string | null {
+function resolveImport(
+  fromPath: string,
+  specifier: string,
+  knownPaths: Set<string>,
+): string | null {
   if (!specifier.startsWith('.')) return null;
   const fromDir = fromPath.includes('/') ? fromPath.slice(0, fromPath.lastIndexOf('/')) : '';
   const combined = normalizePath(`${fromDir}/${specifier}`);
@@ -77,9 +81,14 @@ async function listSourceFiles(project: WorkspaceProject, repo: WorkspaceRepo): 
   const manager = getWorkspaceManager();
   const findExpr = CODE_EXTENSIONS.map((ext) => `-name '*${ext}'`).join(' -o ');
   const command = `find . \\( ${findExpr} \\) -not -path '*/node_modules/*' -not -path '*/.git/*' -not -path '*/dist/*' | sort | head -n ${MAX_FILES_PER_REPO}`;
-  const result = await manager.exec(project, command, { cwd: manager.repoPath(repo), timeoutMs: 60_000 });
+  const result = await manager.exec(project, command, {
+    cwd: manager.repoPath(repo),
+    timeoutMs: 60_000,
+  });
   if (result.exitCode !== 0) {
-    console.error(`[knowledge/codeIndexer] listing files in ${repo.owner}/${repo.repo} failed: ${result.stderr}`);
+    console.error(
+      `[knowledge/codeIndexer] listing files in ${repo.owner}/${repo.repo} failed: ${result.stderr}`,
+    );
     return [];
   }
   return result.stdout
@@ -89,7 +98,11 @@ async function listSourceFiles(project: WorkspaceProject, repo: WorkspaceRepo): 
 }
 
 /** Indexes one repo: a `repo` node, a `file` node per source file (`part_of` the repo), and best-effort `imports` edges between them. */
-export async function indexRepo(project: WorkspaceProject, repo: WorkspaceRepo, projectId: string): Promise<void> {
+export async function indexRepo(
+  project: WorkspaceProject,
+  repo: WorkspaceRepo,
+  projectId: string,
+): Promise<void> {
   const manager = getWorkspaceManager();
   await manager.ensureWorkspace(project);
 
@@ -98,7 +111,16 @@ export async function indexRepo(project: WorkspaceProject, repo: WorkspaceRepo, 
 
   const repoName = `${repo.owner}/${repo.repo}`;
   const existingRepoNode = await kgNodeRepo.getByName(projectId, 'repo', repoName);
-  const repoNode = existingRepoNode ?? (await kgNodeRepo.create({ project_id: projectId, type: 'repo', name: repoName, summary: null, properties: {}, embedding: null }));
+  const repoNode =
+    existingRepoNode ??
+    (await kgNodeRepo.create({
+      project_id: projectId,
+      type: 'repo',
+      name: repoName,
+      summary: null,
+      properties: {},
+      embedding: null,
+    }));
 
   const knownPaths = new Set(relativePaths);
   const pathToNodeId = new Map<string, string>();
@@ -108,10 +130,14 @@ export async function indexRepo(project: WorkspaceProject, repo: WorkspaceRepo, 
     const fileName = `${repoName}/${relPath}`;
     let content: string;
     try {
-      content = (await Promise.race([
-        manager.readFile(project, `${repoDirName(repo)}/${relPath}`),
-        new Promise<never>((_, reject) => setTimeout(() => reject(new Error('read timed out')), FILE_READ_TIMEOUT_MS)),
-      ])).toString('utf8');
+      content = (
+        await Promise.race([
+          manager.readFile(project, `${repoDirName(repo)}/${relPath}`),
+          new Promise<never>((_, reject) =>
+            setTimeout(() => reject(new Error('read timed out')), FILE_READ_TIMEOUT_MS),
+          ),
+        ])
+      ).toString('utf8');
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       console.error(`[knowledge/codeIndexer] failed to read "${fileName}": ${message}`);
@@ -136,20 +162,35 @@ export async function indexRepo(project: WorkspaceProject, repo: WorkspaceRepo, 
   const evidence = { kind: 'system' as const, id: 'code-indexer' };
 
   for (const [relPath, fileId] of pathToNodeId) {
-    await kgEdgeRepo.createIfMissing({ from_id: fileId, to_id: repoNode.id, type: 'part_of', weight: null, evidence });
+    await kgEdgeRepo.createIfMissing({
+      from_id: fileId,
+      to_id: repoNode.id,
+      type: 'part_of',
+      weight: null,
+      evidence,
+    });
 
     for (const specifier of importsByPath.get(relPath) ?? []) {
       const resolved = resolveImport(relPath, specifier, knownPaths);
       if (!resolved) continue;
       const targetId = pathToNodeId.get(resolved);
       if (!targetId || targetId === fileId) continue;
-      await kgEdgeRepo.createIfMissing({ from_id: fileId, to_id: targetId, type: 'imports', weight: null, evidence });
+      await kgEdgeRepo.createIfMissing({
+        from_id: fileId,
+        to_id: targetId,
+        type: 'imports',
+        weight: null,
+        evidence,
+      });
     }
   }
 }
 
 /** Indexes every repo configured on `project` - the whole of what `knowledge.reindexCode` triggers. */
-export async function indexProjectRepos(project: WorkspaceProject, projectId: string): Promise<void> {
+export async function indexProjectRepos(
+  project: WorkspaceProject,
+  projectId: string,
+): Promise<void> {
   for (const repo of project.repos) {
     await indexRepo(project, repo, projectId);
   }

@@ -60,5 +60,7 @@ export const toolConfigsRouter = router({
       }),
     ),
 
-  remove: protectedProcedure.input(z.object({ id: z.string() })).mutation(({ input }) => toolConfigRepo.remove(input.id)),
+  remove: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(({ input }) => toolConfigRepo.remove(input.id)),
 });

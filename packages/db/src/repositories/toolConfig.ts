@@ -4,8 +4,13 @@ import { toolConfig } from '../schema/index.js';
 import { ulid } from '../ulid.js';
 
 export type ToolConfigRow = typeof toolConfig.$inferSelect;
-export type CreateToolConfigInput = Omit<typeof toolConfig.$inferInsert, 'id' | 'created_at' | 'updated_at'>;
-export type UpdateToolConfigInput = Partial<Omit<typeof toolConfig.$inferInsert, 'id' | 'created_at'>>;
+export type CreateToolConfigInput = Omit<
+  typeof toolConfig.$inferInsert,
+  'id' | 'created_at' | 'updated_at'
+>;
+export type UpdateToolConfigInput = Partial<
+  Omit<typeof toolConfig.$inferInsert, 'id' | 'created_at'>
+>;
 
 export async function list(): Promise<ToolConfigRow[]> {
   return db.select().from(toolConfig);
@@ -29,7 +34,10 @@ export async function create(input: CreateToolConfigInput): Promise<ToolConfigRo
   return created;
 }
 
-export async function update(id: string, patch: UpdateToolConfigInput): Promise<ToolConfigRow | undefined> {
+export async function update(
+  id: string,
+  patch: UpdateToolConfigInput,
+): Promise<ToolConfigRow | undefined> {
   const [updated] = await db
     .update(toolConfig)
     .set({ ...patch, updated_at: new Date() })

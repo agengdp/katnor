@@ -74,7 +74,7 @@
     try {
       const created = await trpc().projects.create.mutate({
         name: trimmedName,
-        description: description.trim()
+        description: description.trim(),
       });
       name = '';
       description = '';
@@ -94,7 +94,9 @@
     </p>
   </div>
 
-  <section class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+  <section
+    class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+  >
     <h2 class="text-lg font-semibold">Create project</h2>
     <form class="flex flex-col gap-3" onsubmit={createProject}>
       <label class="flex flex-col gap-1 text-sm">
@@ -161,7 +163,9 @@
     {:else if loading}
       <p class="text-sm text-[var(--color-text-muted)]">Loading projects…</p>
     {:else if projects.length === 0}
-      <p class="text-sm text-[var(--color-text-muted)]">No projects yet - create one to get started.</p>
+      <p class="text-sm text-[var(--color-text-muted)]">
+        No projects yet - create one to get started.
+      </p>
     {:else}
       <div class="flex flex-col gap-3">
         {#each projects as project (project.id)}

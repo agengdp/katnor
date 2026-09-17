@@ -1,6 +1,12 @@
 import type { ContentBlock, ProviderMessage } from '@katnor/llm';
 import { getProvider } from '@katnor/llm';
-import type { ApprovalMode, CompanySettings, RunStatus, RunStepKind, SpendApprovalPayload } from '@katnor/core';
+import type {
+  ApprovalMode,
+  CompanySettings,
+  RunStatus,
+  RunStepKind,
+  SpendApprovalPayload,
+} from '@katnor/core';
 import { mergeCompanySettings } from '@katnor/core';
 import {
   agentRepo,
@@ -30,13 +36,17 @@ const MAX_STEPS_PER_RUN = 12;
 function isTextBlock(block: ContentBlock): block is Extract<ContentBlock, { type: 'text' }> {
   return block.type === 'text';
 }
-function isThinkingBlock(block: ContentBlock): block is Extract<ContentBlock, { type: 'thinking' }> {
+function isThinkingBlock(
+  block: ContentBlock,
+): block is Extract<ContentBlock, { type: 'thinking' }> {
   return block.type === 'thinking';
 }
 function isToolUseBlock(block: ContentBlock): block is Extract<ContentBlock, { type: 'tool_use' }> {
   return block.type === 'tool_use';
 }
-function isServerToolBlock(block: ContentBlock): block is Extract<ContentBlock, { type: 'server_tool' }> {
+function isServerToolBlock(
+  block: ContentBlock,
+): block is Extract<ContentBlock, { type: 'server_tool' }> {
   return block.type === 'server_tool';
 }
 
@@ -146,7 +156,10 @@ async function checkBudgetHardStop(
     }
   }
 
-  const agentCap = Number(agent.budget_daily_usd) > 0 ? Number(agent.budget_daily_usd) : (settings.budgets.agent_daily_usd ?? 0);
+  const agentCap =
+    Number(agent.budget_daily_usd) > 0
+      ? Number(agent.budget_daily_usd)
+      : (settings.budgets.agent_daily_usd ?? 0);
   if (agentCap > 0) {
     const spent = await runRepo.sumCostSince(since, { agentId: agent.id });
     if (spent >= agentCap) {
@@ -187,7 +200,10 @@ async function checkBudgetHardStop(
  * exact cap"); `"always_ask"`, or `"ask_once_per_project"` with no project
  * to scope to, never pre-approves.
  */
-async function isSpendPreapproved(policy: ApprovalMode, projectId: string | null): Promise<boolean> {
+async function isSpendPreapproved(
+  policy: ApprovalMode,
+  projectId: string | null,
+): Promise<boolean> {
   if (policy === 'auto') return true;
   if (policy === 'ask_once_per_project' && projectId) {
     const approved = await approvalRepo.list('approved');
@@ -209,7 +225,11 @@ async function isSpendPreapproved(policy: ApprovalMode, projectId: string | null
  * tool calls through @katnor/tools' registry and recording every LLM call
  * and tool call as a `run_step` - PLAN.md 4.1.
  */
-export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?: string): Promise<void> {
+export async function runAgentExecutor(
+  boss: PgBoss,
+  runId: string,
+  triggerNote?: string,
+): Promise<void> {
   const run = await runRepo.getById(runId);
   if (!run) {
     console.error(`[runExecutor] run "${runId}" not found - dropping job`);
@@ -219,13 +239,19 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     // Defensive: pg-boss can redeliver a job (e.g. after a crash mid-run).
     // Re-running a non-queued run would double-charge tokens/cost and post
     // duplicate messages, so this is a no-op rather than a retry.
-    console.warn(`[runExecutor] run "${runId}" is not queued (status=${run.status}) - skipping redelivery`);
+    console.warn(
+      `[runExecutor] run "${runId}" is not queued (status=${run.status}) - skipping redelivery`,
+    );
     return;
   }
 
   const agent = await agentRepo.getById(run.agent_id);
   if (!agent) {
-    await runRepo.update(runId, { status: 'failed', finished_at: new Date(), summary: 'Agent no longer exists.' });
+    await runRepo.update(runId, {
+      status: 'failed',
+      finished_at: new Date(),
+      summary: 'Agent no longer exists.',
+    });
     return;
   }
   if (agent.status !== 'active') {
@@ -246,7 +272,10 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
 
   const budgetHit = await checkBudgetHardStop(agent, project, settings);
   if (budgetHit) {
-    const preapproved = await isSpendPreapproved(settings.approval_policy.spend, project?.id ?? null);
+    const preapproved = await isSpendPreapproved(
+      settings.approval_policy.spend,
+      project?.id ?? null,
+    );
     if (!preapproved) {
       // "always_ask", or the first time this project has hit a cap under
       // "ask_once_per_project" - pause and ask, the same shape as
@@ -262,7 +291,10 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
         summary: budgetHit.summary,
       };
       const created = await approvalRepo.create({ run_id: runId, kind: 'spend', payload });
-      await eventRepo.append({ type: 'approval.requested', payload: { approval_id: created.id, kind: 'spend' } });
+      await eventRepo.append({
+        type: 'approval.requested',
+        payload: { approval_id: created.id, kind: 'spend' },
+      });
       await runRepo.update(runId, {
         status: 'waiting_human',
         finished_at: new Date(),
@@ -303,7 +335,8 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
   const systemPrompt = buildSystemPrompt(promptInput);
   const initialUserText = await buildInitialUserMessage(promptInput);
 
-  const toolNames = agent.tool_allowlist.length > 0 ? agent.tool_allowlist : DEFAULT_COMPANY_TOOL_NAMES;
+  const toolNames =
+    agent.tool_allowlist.length > 0 ? agent.tool_allowlist : DEFAULT_COMPANY_TOOL_NAMES;
   // MCP tools (PLAN.md 4.3) are discovered live per run from whatever
   // servers this agent's tool_allowlist grants (see ./mcpTools.ts) rather
   // than pre-registered in the shared, module-level `agentToolRegistry` -
@@ -312,12 +345,26 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
   const mcpToolsByName = new Map(mcpTools.map((def) => [def.name, def]));
   const tools = [
     ...agentToolRegistry.listForModel(toolNames, { isSystem: agent.is_system }),
-    ...mcpTools.map((def) => ({ name: def.name, description: def.description, inputSchema: def.inputSchema })),
+    ...mcpTools.map((def) => ({
+      name: def.name,
+      description: def.description,
+      inputSchema: def.inputSchema,
+    })),
   ];
   const provider = getProvider(agent.model_config.provider);
 
-  const messages: ProviderMessage[] = [{ role: 'user', content: [{ type: 'text', text: initialUserText }] }];
-  const toolCtx: AgentToolContext = { boss, agent, run, task: task ?? null, project, company, pauseRequested: null };
+  const messages: ProviderMessage[] = [
+    { role: 'user', content: [{ type: 'text', text: initialUserText }] },
+  ];
+  const toolCtx: AgentToolContext = {
+    boss,
+    agent,
+    run,
+    task: task ?? null,
+    project,
+    company,
+    pauseRequested: null,
+  };
 
   // PLAN.md 4.1: "a task budget is also sent so the model paces itself."
   // This is a whole-run advisory ceiling (Anthropic's task budgets count
@@ -379,13 +426,29 @@ export async function runAgentExecutor(boss: PgBoss, runId: string, triggerNote?
     const thinkingBlock = result.content.find(isThinkingBlock);
     if (thinkingBlock && thinkingBlock.text.trim().length > 0) {
       seq += 1;
-      await recordStep(runId, agent.id, taskId, seq, 'thinking_summary', { text: thinkingBlock.text }, { detail: 'thinking' });
+      await recordStep(
+        runId,
+        agent.id,
+        taskId,
+        seq,
+        'thinking_summary',
+        { text: thinkingBlock.text },
+        { detail: 'thinking' },
+      );
     }
 
     for (const block of result.content.filter(isTextBlock)) {
       if (block.text.trim().length === 0) continue;
       seq += 1;
-      await recordStep(runId, agent.id, taskId, seq, 'message', { text: block.text }, { detail: block.text.slice(0, 80) });
+      await recordStep(
+        runId,
+        agent.id,
+        taskId,
+        seq,
+        'message',
+        { text: block.text },
+        { detail: block.text.slice(0, 80) },
+      );
       summary = block.text.slice(0, 500);
     }
 

@@ -84,9 +84,7 @@ async function main() {
   const existingCeo = agents.find((a) => a.is_system);
 
   if (existingCeo) {
-    console.log(
-      `[seed] system agent already exists: "${existingCeo.name}" (${existingCeo.id})`,
-    );
+    console.log(`[seed] system agent already exists: "${existingCeo.name}" (${existingCeo.id})`);
   } else {
     const ceo = await agentRepo.create({
       name: 'Nadia Reyes',

@@ -57,7 +57,10 @@ async function findOrphanPages(projectId: string): Promise<string[]> {
 const FREQUENT_NODE_EDGE_THRESHOLD = 3;
 
 async function findMissingPages(projectId: string): Promise<MissingPageFinding[]> {
-  const [nodes, pages] = await Promise.all([kgNodeRepo.list({ project_id: projectId }), wikiPageRepo.list(projectId)]);
+  const [nodes, pages] = await Promise.all([
+    kgNodeRepo.list({ project_id: projectId }),
+    wikiPageRepo.list(projectId),
+  ]);
   const pageTitles = new Set(pages.map((page) => page.title.toLowerCase()));
 
   const findings: MissingPageFinding[] = [];
@@ -91,13 +94,21 @@ function isToolUseBlock(block: ContentBlock): block is Extract<ContentBlock, { t
 }
 
 function toStringArray(value: unknown): string[] {
-  return Array.isArray(value) ? value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0) : [];
+  return Array.isArray(value)
+    ? value.filter((v): v is string => typeof v === 'string' && v.trim().length > 0)
+    : [];
 }
 
-async function findContradictionsAndStaleFacts(projectId: string): Promise<{ contradictions: string[]; staleFacts: string[] }> {
+async function findContradictionsAndStaleFacts(
+  projectId: string,
+): Promise<{ contradictions: string[]; staleFacts: string[] }> {
   const paths = (await wikiStorage.listPages(projectId)).filter((path) => path !== 'log.md');
-  const pages = await Promise.all(paths.map(async (path) => ({ path, content: await wikiStorage.readPage(projectId, path) })));
-  const nonEmpty = pages.filter((page): page is { path: string; content: string } => Boolean(page.content && page.content.trim().length > 0));
+  const pages = await Promise.all(
+    paths.map(async (path) => ({ path, content: await wikiStorage.readPage(projectId, path) })),
+  );
+  const nonEmpty = pages.filter((page): page is { path: string; content: string } =>
+    Boolean(page.content && page.content.trim().length > 0),
+  );
   if (nonEmpty.length < 2) return { contradictions: [], staleFacts: [] };
 
   const combined = nonEmpty
@@ -125,8 +136,16 @@ async function findContradictionsAndStaleFacts(projectId: string): Promise<{ con
           inputSchema: {
             type: 'object',
             properties: {
-              contradictions: { type: 'array', items: { type: 'string' }, description: 'One sentence per finding, naming the pages involved.' },
-              stale_facts: { type: 'array', items: { type: 'string' }, description: 'One sentence per finding, naming the pages involved.' },
+              contradictions: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'One sentence per finding, naming the pages involved.',
+              },
+              stale_facts: {
+                type: 'array',
+                items: { type: 'string' },
+                description: 'One sentence per finding, naming the pages involved.',
+              },
             },
             required: ['contradictions', 'stale_facts'],
             additionalProperties: false,
@@ -146,11 +165,15 @@ async function findContradictionsAndStaleFacts(projectId: string): Promise<{ con
   }
 
   if (result.stopReason === 'error' || result.stopReason === 'refusal') {
-    console.error(`[knowledge/wikiLint] lint call did not succeed: ${result.errorMessage ?? result.refusalCategory ?? result.stopReason}`);
+    console.error(
+      `[knowledge/wikiLint] lint call did not succeed: ${result.errorMessage ?? result.refusalCategory ?? result.stopReason}`,
+    );
     return { contradictions: [], staleFacts: [] };
   }
 
-  const toolUse = result.content.filter(isToolUseBlock).find((block) => block.name === LINT_TOOL_NAME);
+  const toolUse = result.content
+    .filter(isToolUseBlock)
+    .find((block) => block.name === LINT_TOOL_NAME);
   if (!toolUse) return { contradictions: [], staleFacts: [] };
 
   return {
@@ -198,7 +221,9 @@ export function formatLintReport(report: LintReport): string {
     );
   }
   if (report.contradictions.length > 0) {
-    sections.push(`Possible contradictions:\n${report.contradictions.map((c) => `- ${c}`).join('\n')}`);
+    sections.push(
+      `Possible contradictions:\n${report.contradictions.map((c) => `- ${c}`).join('\n')}`,
+    );
   }
   if (report.staleFacts.length > 0) {
     sections.push(`Possibly stale facts:\n${report.staleFacts.map((s) => `- ${s}`).join('\n')}`);

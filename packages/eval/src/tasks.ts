@@ -80,10 +80,16 @@ export const EVAL_TASKS: EvalTaskDef[] = [
           content = await readArtifactText(artifact.storage_key);
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
-          return { passed: false, reason: `could not read artifact "${artifact.id}" content: ${message}` };
+          return {
+            passed: false,
+            reason: `could not read artifact "${artifact.id}" content: ${message}`,
+          };
         }
         if (content.includes(ARTIFACT_MARKER)) {
-          return { passed: true, reason: `artifact "${artifact.id}" contains "${ARTIFACT_MARKER}"` };
+          return {
+            passed: true,
+            reason: `artifact "${artifact.id}" contains "${ARTIFACT_MARKER}"`,
+          };
         }
       }
       return {

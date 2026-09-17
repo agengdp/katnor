@@ -2,7 +2,7 @@
 export default {
   content: ['./src/**/*.{svelte,ts}'],
   theme: {
-    extend: {}
+    extend: {},
   },
-  plugins: []
+  plugins: [],
 };

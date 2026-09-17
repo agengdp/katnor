@@ -6,7 +6,9 @@ import { protectedProcedure, publicProcedure, router } from '../trpc.js';
 export const projectsRouter = router({
   list: publicProcedure.query(() => projectRepo.list()),
 
-  getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => projectRepo.getById(input.id)),
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input }) => projectRepo.getById(input.id)),
 
   /**
    * Mirrors @katnor/agents' `create_project` tool (same default board
@@ -22,9 +24,17 @@ export const projectsRouter = router({
         repos: [],
         workspace_id: null,
         board_settings: { columns: DEFAULT_BOARD_COLUMNS },
-        wiki_path: `wiki/${input.name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '') || 'project'}`,
+        wiki_path: `wiki/${
+          input.name
+            .toLowerCase()
+            .replace(/[^a-z0-9]+/g, '-')
+            .replace(/^-+|-+$/g, '') || 'project'
+        }`,
       });
-      await eventRepo.append({ type: 'project.created', payload: { project_id: created.id, name: created.name } });
+      await eventRepo.append({
+        type: 'project.created',
+        payload: { project_id: created.id, name: created.name },
+      });
       await channelRepo.create({
         project_id: created.id,
         team_id: null,

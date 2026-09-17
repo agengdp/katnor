@@ -71,7 +71,7 @@ export async function ensureFixtures(): Promise<{ projectId: string; agentId: st
       name: EVAL_AGENT_NAME,
       title: 'Eval Agent',
       persona: {
-        bio: 'A fixture employee that only exists to run @katnor/eval\'s scripted tasks.',
+        bio: "A fixture employee that only exists to run @katnor/eval's scripted tasks.",
         personality: 'Literal and to the point.',
         strengths: ['following instructions exactly'],
         style: 'Terse.',

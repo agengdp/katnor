@@ -44,7 +44,9 @@ export class S3ArtifactStorage implements StorageBackend {
   }
 
   async get(key: string): Promise<Buffer> {
-    const response = await this.client.send(new GetObjectCommand({ Bucket: this.bucket, Key: key }));
+    const response = await this.client.send(
+      new GetObjectCommand({ Bucket: this.bucket, Key: key }),
+    );
     const body = response.Body;
     if (!body) {
       throw new Error(`S3ArtifactStorage.get: no body returned for key "${key}"`);

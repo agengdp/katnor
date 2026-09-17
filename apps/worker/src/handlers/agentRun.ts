@@ -9,7 +9,9 @@ import type PgBoss from 'pg-boss';
  * trigger, using the same client this worker process already has running.
  */
 export function createAgentRunHandler(boss: PgBoss) {
-  return async function agentRun(jobs: PgBoss.Job<{ runId: string; note?: string }>[]): Promise<{ ok: true }> {
+  return async function agentRun(
+    jobs: PgBoss.Job<{ runId: string; note?: string }>[],
+  ): Promise<{ ok: true }> {
     for (const job of jobs) {
       try {
         await runAgentExecutor(boss, job.data.runId, job.data.note);

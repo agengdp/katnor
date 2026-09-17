@@ -38,5 +38,11 @@ export function getS3Config(): S3StorageConfig {
         'MINIO_ROOT_PASSWORD to all be set - see .env.example.',
     );
   }
-  return { endpoint, bucket, accessKeyId, secretAccessKey, region: process.env.MINIO_REGION?.trim() || 'us-east-1' };
+  return {
+    endpoint,
+    bucket,
+    accessKeyId,
+    secretAccessKey,
+    region: process.env.MINIO_REGION?.trim() || 'us-east-1',
+  };
 }

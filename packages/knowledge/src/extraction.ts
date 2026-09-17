@@ -48,9 +48,16 @@ function buildInputSchema(): Record<string, unknown> {
         items: {
           type: 'object',
           properties: {
-            key: { type: 'string', description: 'A short local id (e.g. "n1") - referenced by edges below, not a real database id.' },
+            key: {
+              type: 'string',
+              description:
+                'A short local id (e.g. "n1") - referenced by edges below, not a real database id.',
+            },
             type: { type: 'string', enum: [...KG_NODE_TYPES] },
-            name: { type: 'string', description: 'A short, specific, human-readable name - not a full sentence.' },
+            name: {
+              type: 'string',
+              description: 'A short, specific, human-readable name - not a full sentence.',
+            },
             summary: { type: 'string', description: 'One or two sentences of context, if useful.' },
           },
           required: ['key', 'type', 'name'],
@@ -100,12 +107,18 @@ function parseExtraction(input: Record<string, unknown>): ExtractionResult {
   const nodes: ExtractedNode[] = nodesRaw
     .filter((n): n is Record<string, unknown> => typeof n === 'object' && n !== null)
     .map((n) => {
-      const type = typeof n.type === 'string' && (KG_NODE_TYPES as readonly string[]).includes(n.type) ? (n.type as KgNodeType) : 'concept';
+      const type =
+        typeof n.type === 'string' && (KG_NODE_TYPES as readonly string[]).includes(n.type)
+          ? (n.type as KgNodeType)
+          : 'concept';
       return {
         key: typeof n.key === 'string' ? n.key : '',
         type,
         name: typeof n.name === 'string' ? n.name.trim() : '',
-        summary: typeof n.summary === 'string' && n.summary.trim().length > 0 ? n.summary.trim() : undefined,
+        summary:
+          typeof n.summary === 'string' && n.summary.trim().length > 0
+            ? n.summary.trim()
+            : undefined,
       };
     })
     .filter((n) => n.key.length > 0 && n.name.length > 0);
@@ -161,11 +174,15 @@ export async function extractEntities(text: string): Promise<ExtractionResult> {
   }
 
   if (result.stopReason === 'error' || result.stopReason === 'refusal') {
-    console.error(`[knowledge/extraction] extraction call did not succeed: ${result.errorMessage ?? result.refusalCategory ?? result.stopReason}`);
+    console.error(
+      `[knowledge/extraction] extraction call did not succeed: ${result.errorMessage ?? result.refusalCategory ?? result.stopReason}`,
+    );
     return EMPTY_RESULT;
   }
 
-  const toolUse = result.content.filter(isToolUseBlock).find((block) => block.name === EXTRACTION_TOOL_NAME);
+  const toolUse = result.content
+    .filter(isToolUseBlock)
+    .find((block) => block.name === EXTRACTION_TOOL_NAME);
   if (!toolUse) return EMPTY_RESULT;
 
   return parseExtraction(toolUse.input);

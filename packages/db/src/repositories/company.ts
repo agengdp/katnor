@@ -6,7 +6,10 @@ import { company } from '../schema/index.js';
 import { ulid } from '../ulid.js';
 
 export type CompanyRow = typeof company.$inferSelect;
-export type CreateCompanyInput = Omit<typeof company.$inferInsert, 'id' | 'created_at' | 'updated_at'>;
+export type CreateCompanyInput = Omit<
+  typeof company.$inferInsert,
+  'id' | 'created_at' | 'updated_at'
+>;
 
 /**
  * Returns the single company row, inserting it first (using `input`) if no

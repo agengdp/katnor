@@ -127,7 +127,7 @@
       id: c.id,
       name: c.name,
       status: c.status,
-      tasks: tasks.filter((t) => t.status === c.status)
+      tasks: tasks.filter((t) => t.status === c.status),
     }));
     // "blocked" isn't one of the default columns - anything whose status
     // doesn't match a configured column (in practice, blocked tasks) lands
@@ -149,7 +149,7 @@
       const [proj, taskRows, agentRows] = await Promise.all([
         trpc().projects.getById.query({ id }),
         trpc().tasks.list.query({ project_id: id }),
-        trpc().agents.list.query()
+        trpc().agents.list.query(),
       ]);
       agents = agentRows as unknown as AgentRow[];
       if (!proj) {
@@ -173,12 +173,25 @@
   // synchronously here, so this effect re-fires on navigation).
   $effect(() => {
     const id = projectId;
+    // `$page.params.id` is typed `string | undefined`. The router only
+    // matches this route with the param present, so this should not happen -
+    // but skipping the load beats calling it with `undefined`.
+    if (!id) return;
     loadAll(id);
   });
 
   async function refreshTasks() {
+    // Same narrowing as loadAll and createTask, and not just to satisfy the
+    // type: `tasks.list` takes an optional project_id, and taskRepo.list
+    // treats a missing one as "no filter" and returns every task in the
+    // database. An unfiltered call here would quietly repopulate this
+    // project's board with every other project's tasks. Notably this is
+    // reachable: the realtime subscription below calls refreshTasks for any
+    // task event that carries no project_id of its own.
+    const id = projectId;
+    if (!id) return;
     try {
-      const taskRows = await trpc().tasks.list.query({ project_id: projectId });
+      const taskRows = await trpc().tasks.list.query({ project_id: id });
       tasks = taskRows as unknown as TaskRow[];
       rebuildColumns();
     } catch (err) {
@@ -280,16 +293,20 @@
     event.preventDefault();
     const title = newTitle.trim();
     if (!title) return;
+    // Narrows `$page.params.id` from `string | undefined`; tasks.create
+    // requires a project_id, so there is nothing sensible to send without it.
+    const id = projectId;
+    if (!id) return;
     creatingTask = true;
     createTaskError = null;
     try {
       await trpc().tasks.create.mutate({
-        project_id: projectId,
+        project_id: id,
         title,
         description: newDescription.trim(),
         acceptance_criteria: newAcceptanceCriteria.trim(),
         priority: newPriority,
-        assignee_id: newAssigneeId || null
+        assignee_id: newAssigneeId || null,
       });
       newTitle = '';
       newDescription = '';
@@ -313,16 +330,19 @@
   {#if loading}
     <p class="text-sm text-[var(--color-text-muted)]">Loading project…</p>
   {:else if loadError}
-    <div class="flex flex-col gap-2 rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm">
+    <div
+      class="flex flex-col gap-2 rounded-md border border-[var(--color-danger)] bg-[var(--color-surface)] p-4 text-sm"
+    >
       <p class="font-medium text-[var(--color-danger)]">Couldn't load this project</p>
       <p class="text-[var(--color-text-muted)]">{loadError}</p>
       <p class="text-[var(--color-text-muted)]">
-        apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong
-        place.
+        apps/server may not be running yet, or PUBLIC_SERVER_URL may be pointing at the wrong place.
       </p>
     </div>
   {:else if notFound || !project}
-    <div class="flex flex-col gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm">
+    <div
+      class="flex flex-col gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm"
+    >
       <p class="font-medium">Project not found</p>
       <p class="text-[var(--color-text-muted)]">
         There's no project at this address - it may have been deleted, or the link might be wrong.
@@ -340,7 +360,9 @@
       <p class="text-sm text-[var(--color-danger)]">{actionError}</p>
     {/if}
 
-    <section class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4">
+    <section
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+    >
       <h2 class="text-sm font-semibold">
         Add task <span class="font-normal text-[var(--color-text-muted)]">(goes to Backlog)</span>
       </h2>
@@ -428,8 +450,8 @@
             <div
               class="flex min-h-[100px] flex-col gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-2"
               use:dndzone={{ items: column.tasks, flipDurationMs, type: dndType }}
-              on:consider={(e) => handleConsider(colIndex, e)}
-              on:finalize={(e) => handleFinalize(colIndex, e)}
+              onconsider={(e) => handleConsider(colIndex, e as CustomEvent<DndDetail>)}
+              onfinalize={(e) => handleFinalize(colIndex, e as CustomEvent<DndDetail>)}
             >
               {#each column.tasks as task (task.id)}
                 <div animate:flip={{ duration: flipDurationMs }}>
@@ -458,20 +480,30 @@
                     </div>
 
                     <div class="flex flex-wrap items-center gap-2 text-xs">
-                      <span class="rounded-full px-2 py-0.5 font-medium {priorityClasses(task.priority)}">
+                      <span
+                        class="rounded-full px-2 py-0.5 font-medium {priorityClasses(
+                          task.priority,
+                        )}"
+                      >
                         {priorityLabel(task.priority)}
                       </span>
-                      <span class="text-[var(--color-text-muted)]">{assigneeName(task.assignee_id)}</span>
+                      <span class="text-[var(--color-text-muted)]"
+                        >{assigneeName(task.assignee_id)}</span
+                      >
                     </div>
 
                     {#if expandedTaskId === task.id}
-                      <div class="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-2 text-xs text-[var(--color-text-muted)]">
+                      <div
+                        class="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-2 text-xs text-[var(--color-text-muted)]"
+                      >
                         <p>
                           <span class="font-medium text-[var(--color-text)]">Description:</span>
                           {task.description || 'No description.'}
                         </p>
                         <p>
-                          <span class="font-medium text-[var(--color-text)]">Acceptance criteria:</span>
+                          <span class="font-medium text-[var(--color-text)]"
+                            >Acceptance criteria:</span
+                          >
                           {task.acceptance_criteria || 'None.'}
                         </p>
                         {#if task.due_at}
@@ -499,6 +531,18 @@
                       </div>
                     {/if}
 
+                    <!--
+                      These handlers add no interaction of their own - they
+                      only stop a click/drag on the assignee control from
+                      reaching the card wrapper above, which is a
+                      `role="button"` that toggles expand (and a dndzone
+                      drag source). The `<select>` inside keeps its own
+                      native keyboard handling, and the `<label>` keeps its
+                      labelling semantics, so the two a11y rules below are
+                      false positives here rather than a missing keyboard
+                      affordance.
+                    -->
+                    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
                     <label
                       class="flex items-center gap-1.5 text-xs"
                       onclick={(e) => e.stopPropagation()}
@@ -507,7 +551,11 @@
                       <span class="shrink-0 text-[var(--color-text-muted)]">Assignee</span>
                       <select
                         value={task.assignee_id ?? ''}
-                        onchange={(e) => reassignTask(task.id, (e.currentTarget as HTMLSelectElement).value || null)}
+                        onchange={(e) =>
+                          reassignTask(
+                            task.id,
+                            (e.currentTarget as HTMLSelectElement).value || null,
+                          )}
                         class="min-w-0 flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-1.5 py-1 text-xs text-[var(--color-text)]"
                       >
                         <option value="">Unassigned</option>

@@ -22,14 +22,20 @@ export const artifactsRouter = router({
       }),
     )
     .query(({ input }) =>
-      artifactRepo.listLatest({ project_id: input.projectId, task_id: input.taskId, run_id: input.runId }),
+      artifactRepo.listLatest({
+        project_id: input.projectId,
+        task_id: input.taskId,
+        run_id: input.runId,
+      }),
     ),
 
   listGroup: publicProcedure
     .input(z.object({ artifactGroupId: z.string() }))
     .query(({ input }) => artifactRepo.listGroup(input.artifactGroupId)),
 
-  getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => artifactRepo.getById(input.id)),
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input }) => artifactRepo.getById(input.id)),
 
   getUrl: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
     const row = await artifactRepo.getById(input.id);

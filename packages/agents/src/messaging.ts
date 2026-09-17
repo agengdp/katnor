@@ -39,7 +39,8 @@ async function evaluateAntiChatter(channelId: string, authorId: string): Promise
   // waking people until a human weighs in (visible via the Inbox/event feed).
   const tail = recent.slice(-CHATTER_ESCALATION_TAIL_LENGTH);
   const isUnbrokenAgentChatter =
-    tail.length >= CHATTER_ESCALATION_TAIL_LENGTH && tail.every((row) => row.author_type === 'agent');
+    tail.length >= CHATTER_ESCALATION_TAIL_LENGTH &&
+    tail.every((row) => row.author_type === 'agent');
   if (isUnbrokenAgentChatter) {
     return { suppressWake: true, reason: 'thread_escalation' };
   }
@@ -118,7 +119,9 @@ export async function postMessage(boss: PgBoss, input: PostMessageInput) {
   // rapidly, or a long agent discussion the owner is actively part of, is
   // never what this is guarding against.
   const chatterVerdict: ChatterVerdict =
-    input.authorType === 'agent' ? await evaluateAntiChatter(channel.id, input.authorId) : { suppressWake: false, reason: null };
+    input.authorType === 'agent'
+      ? await evaluateAntiChatter(channel.id, input.authorId)
+      : { suppressWake: false, reason: null };
   if (chatterVerdict.suppressWake) {
     await eventRepo.append({
       type: 'chatter.limited',
@@ -127,7 +130,8 @@ export async function postMessage(boss: PgBoss, input: PostMessageInput) {
   }
 
   if (!chatterVerdict.suppressWake) {
-    const trigger: RunTrigger = input.trigger ?? (input.authorType === 'human' ? 'human' : 'mention');
+    const trigger: RunTrigger =
+      input.trigger ?? (input.authorType === 'human' ? 'human' : 'mention');
     for (const agentId of toWake) {
       await triggerRun(boss, { agentId, taskId: channel.task_id, channelId: channel.id, trigger });
     }

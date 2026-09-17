@@ -43,8 +43,8 @@ You  ──task──▶ CEO ──hires──▶ PM, Tech Lead, Backend Dev, Fr
 1. `docker compose up` → open the dashboard. Onboarding asks for provider API keys
    (Anthropic required, others optional), a company name, and a default model.
 2. The office shows one desk: the **CEO** (default model `claude-opus-5`).
-3. You post in the `#general` channel: *"Create a software development team and build me a
-   todo app with a SvelteKit frontend and a Postgres backend."*
+3. You post in the `#general` channel: _"Create a software development team and build me a
+   todo app with a SvelteKit frontend and a Postgres backend."_
 4. The CEO run starts. It calls `hire_agent` several times, e.g.:
    - "Maya Chen" — Product Manager — `claude-opus-5`
    - "Tomasz Nowak" — Tech Lead — `claude-opus-5`
@@ -52,8 +52,10 @@ You  ──task──▶ CEO ──hires──▶ PM, Tech Lead, Backend Dev, Fr
    - "Lena Fischer" — Frontend Engineer — `claude-sonnet-5`
    - "Sam Okafor" — QA Engineer — `claude-haiku-4-5`
    - "Ines Duarte" — Product Designer — `claude-sonnet-5` with the Figma tool
+
    New desks appear in the office as they are hired. (If you enable "approve hires", each hire
    waits for your click.)
+
 5. The CEO creates a project, a board, and a handful of epics, and assigns them to the PM and
    the Tech Lead. Those agents wake up, break work down into tasks, assign them, and post in the
    project channel.
@@ -105,26 +107,26 @@ one process.
 
 ### 2.2 Tech stack (decisions)
 
-| Layer | Choice | Why |
-|---|---|---|
-| Language | TypeScript everywhere (Node 22) | One language for web, server, worker, and the Claude Agent SDK |
-| Monorepo | pnpm workspaces + Turborepo | Shared packages, fast CI |
-| Web | SvelteKit (Svelte 5, runes), Tailwind, shadcn-svelte, TanStack Query (Svelte), Svelte stores for live state | Small bundles, reactive by default, simple to keep live data in sync |
-| 2D office | Phaser 3 (inside a Svelte component), Tiled maps, pixel-art tilesets | Built-in tilemaps, sprites, animation, pathfinding plugins |
-| Kanban | svelte-dnd-action | Drag-and-drop built for Svelte, keyboard accessible |
-| Graph view | Sigma.js + graphology | Renders thousands of nodes in WebGL |
-| API | Hono + tRPC + zod (tRPC client via trpc-sveltekit) | End-to-end types, tiny footprint |
-| Realtime | WebSocket (`ws`) fed by Postgres LISTEN/NOTIFY | No extra broker |
-| DB | Postgres 16 + pgvector, Drizzle ORM | Relational data, vectors, and graph tables in one DB |
-| Queue | pg-boss | Durable jobs without Redis |
-| LLM (Claude) | `@anthropic-ai/sdk` (Messages API, Tool Runner) | Full feature access: adaptive thinking, effort, caching, structured outputs, compaction |
-| LLM (others) | Provider adapter interface; OpenAI-compatible adapter first, then Google, Ollama | "Each employee can use a different model" |
-| Coding agents | Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) for Claude Code; `codex exec` CLI for Codex | Batteries-included coding harnesses run inside the sandbox |
-| Tool integrations | MCP (Model Context Protocol) client; GitHub MCP, Figma MCP, Playwright MCP | One plug-in standard for external tools |
-| Sandboxes | Docker via dockerode; per-project container with a mounted workspace volume | Isolation for shell and code execution |
-| Artifacts | S3-compatible (MinIO) in prod, local FS in dev | Versioned binary/text storage |
-| Wiki | Markdown files in a git repo per project (`wiki/`) | Human-readable, diffable, editable in Obsidian/VS Code |
-| Auth | Single owner account (password in env) for v1; better-auth later | Keep v1 small |
+| Layer             | Choice                                                                                                      | Why                                                                                     |
+| ----------------- | ----------------------------------------------------------------------------------------------------------- | --------------------------------------------------------------------------------------- |
+| Language          | TypeScript everywhere (Node 22)                                                                             | One language for web, server, worker, and the Claude Agent SDK                          |
+| Monorepo          | pnpm workspaces + Turborepo                                                                                 | Shared packages, fast CI                                                                |
+| Web               | SvelteKit (Svelte 5, runes), Tailwind, shadcn-svelte, TanStack Query (Svelte), Svelte stores for live state | Small bundles, reactive by default, simple to keep live data in sync                    |
+| 2D office         | Phaser 3 (inside a Svelte component), Tiled maps, pixel-art tilesets                                        | Built-in tilemaps, sprites, animation, pathfinding plugins                              |
+| Kanban            | svelte-dnd-action                                                                                           | Drag-and-drop built for Svelte, keyboard accessible                                     |
+| Graph view        | Sigma.js + graphology                                                                                       | Renders thousands of nodes in WebGL                                                     |
+| API               | Hono + tRPC + zod (tRPC client via trpc-sveltekit)                                                          | End-to-end types, tiny footprint                                                        |
+| Realtime          | WebSocket (`ws`) fed by Postgres LISTEN/NOTIFY                                                              | No extra broker                                                                         |
+| DB                | Postgres 16 + pgvector, Drizzle ORM                                                                         | Relational data, vectors, and graph tables in one DB                                    |
+| Queue             | pg-boss                                                                                                     | Durable jobs without Redis                                                              |
+| LLM (Claude)      | `@anthropic-ai/sdk` (Messages API, Tool Runner)                                                             | Full feature access: adaptive thinking, effort, caching, structured outputs, compaction |
+| LLM (others)      | Provider adapter interface; OpenAI-compatible adapter first, then Google, Ollama                            | "Each employee can use a different model"                                               |
+| Coding agents     | Claude Agent SDK (`@anthropic-ai/claude-agent-sdk`) for Claude Code; `codex exec` CLI for Codex             | Batteries-included coding harnesses run inside the sandbox                              |
+| Tool integrations | MCP (Model Context Protocol) client; GitHub MCP, Figma MCP, Playwright MCP                                  | One plug-in standard for external tools                                                 |
+| Sandboxes         | Docker via dockerode; per-project container with a mounted workspace volume                                 | Isolation for shell and code execution                                                  |
+| Artifacts         | S3-compatible (MinIO) in prod, local FS in dev                                                              | Versioned binary/text storage                                                           |
+| Wiki              | Markdown files in a git repo per project (`wiki/`)                                                          | Human-readable, diffable, editable in Obsidian/VS Code                                  |
+| Auth              | Single owner account (password in env) for v1; better-auth later                                            | Keep v1 small                                                                           |
 
 ### 2.3 Repository layout
 
@@ -157,26 +159,26 @@ katnor/
 
 All tables carry `id` (ULID), `created_at`, `updated_at`. Only key fields are listed.
 
-| Entity | Key fields | Notes |
-|---|---|---|
-| `company` | name, settings (default model, budgets, approval policy) | Exactly one in v1 |
-| `agent` | name, title, persona (bio, personality, strengths, communication style), system_prompt, avatar (sprite id), reports_to, team_id, model_config, tool_allowlist, status, budget (daily USD), is_system (CEO) | "Employee" |
-| `model_config` | provider, model id, effort, thinking display, max_tokens, temperature (non-Claude) | Embedded JSON on agent, validated per provider |
-| `team` | name, lead_agent_id | Optional grouping |
-| `project` | name, description, repos[], workspace_id, board settings, wiki path | Owns a board, a channel, a wiki, a subgraph |
-| `task` | project_id, title, description, acceptance_criteria, status, priority, assignee_id, created_by, parent_id, depends_on[], due_at | Kanban card; also the unit of agent work |
-| `run` | agent_id, task_id?, trigger (task/mention/schedule/human), status, started/finished, tokens in/out, cost_usd, summary | One agent execution |
-| `run_step` | run_id, seq, kind (llm_call/tool_call/tool_result/message/thinking_summary), payload, tokens, duration | Trace |
-| `channel` | project_id?, team_id?, kind (project/team/dm/task_thread/general) | Slack-like |
-| `message` | channel_id, author (agent or human), content, mentions[], reply_to, attachments | Wakes mentioned agents |
-| `artifact` | project_id, task_id?, run_id?, kind (file/diff/pr/doc/image/design/link/report), title, storage_key, version, mime, metadata | Versioned by `(artifact_group_id, version)` |
-| `kg_node` | project_id?, type, name, summary, properties, embedding | Knowledge graph |
-| `kg_edge` | from_id, to_id, type, weight, evidence (run/artifact/message id) | |
-| `wiki_page` | project_id, path, title, frontmatter, content_hash, embedding | Mirrors the file on disk |
-| `tool_config` | kind (mcp/builtin), name, command/url, env secret refs, enabled | Configured in Settings |
-| `provider_config` | provider, api key (encrypted), base_url, enabled, model catalog cache | |
-| `approval` | kind (hire/tool_call/spend), payload, status, decided_by | Human gates |
-| `event` | type, payload, occurred_at | Append-only bus, also feeds the office |
+| Entity            | Key fields                                                                                                                                                                                                 | Notes                                          |
+| ----------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------- |
+| `company`         | name, settings (default model, budgets, approval policy)                                                                                                                                                   | Exactly one in v1                              |
+| `agent`           | name, title, persona (bio, personality, strengths, communication style), system_prompt, avatar (sprite id), reports_to, team_id, model_config, tool_allowlist, status, budget (daily USD), is_system (CEO) | "Employee"                                     |
+| `model_config`    | provider, model id, effort, thinking display, max_tokens, temperature (non-Claude)                                                                                                                         | Embedded JSON on agent, validated per provider |
+| `team`            | name, lead_agent_id                                                                                                                                                                                        | Optional grouping                              |
+| `project`         | name, description, repos[], workspace_id, board settings, wiki path                                                                                                                                        | Owns a board, a channel, a wiki, a subgraph    |
+| `task`            | project_id, title, description, acceptance_criteria, status, priority, assignee_id, created_by, parent_id, depends_on[], due_at                                                                            | Kanban card; also the unit of agent work       |
+| `run`             | agent_id, task_id?, trigger (task/mention/schedule/human), status, started/finished, tokens in/out, cost_usd, summary                                                                                      | One agent execution                            |
+| `run_step`        | run_id, seq, kind (llm_call/tool_call/tool_result/message/thinking_summary), payload, tokens, duration                                                                                                     | Trace                                          |
+| `channel`         | project_id?, team_id?, kind (project/team/dm/task_thread/general)                                                                                                                                          | Slack-like                                     |
+| `message`         | channel_id, author (agent or human), content, mentions[], reply_to, attachments                                                                                                                            | Wakes mentioned agents                         |
+| `artifact`        | project_id, task_id?, run_id?, kind (file/diff/pr/doc/image/design/link/report), title, storage_key, version, mime, metadata                                                                               | Versioned by `(artifact_group_id, version)`    |
+| `kg_node`         | project_id?, type, name, summary, properties, embedding                                                                                                                                                    | Knowledge graph                                |
+| `kg_edge`         | from_id, to_id, type, weight, evidence (run/artifact/message id)                                                                                                                                           |                                                |
+| `wiki_page`       | project_id, path, title, frontmatter, content_hash, embedding                                                                                                                                              | Mirrors the file on disk                       |
+| `tool_config`     | kind (mcp/builtin), name, command/url, env secret refs, enabled                                                                                                                                            | Configured in Settings                         |
+| `provider_config` | provider, api key (encrypted), base_url, enabled, model catalog cache                                                                                                                                      |                                                |
+| `approval`        | kind (hire/tool_call/spend), payload, status, decided_by                                                                                                                                                   | Human gates                                    |
+| `event`           | type, payload, occurred_at                                                                                                                                                                                 | Append-only bus, also feeds the office         |
 
 Task status flow: `backlog → todo → in_progress → review → done`, plus `blocked` (side state).
 Columns are configurable per project; the statuses above are the defaults.
@@ -232,11 +234,18 @@ role. `hire_agent` uses a strict schema:
 
 ```json
 {
-  "name": "string", "title": "string",
-  "persona": { "bio": "string", "personality": "string", "strengths": ["string"], "style": "string" },
+  "name": "string",
+  "title": "string",
+  "persona": {
+    "bio": "string",
+    "personality": "string",
+    "strengths": ["string"],
+    "style": "string"
+  },
   "model": { "provider": "anthropic", "model": "claude-sonnet-5", "effort": "high" },
   "tools": ["claude_code", "shell", "github", "web_search"],
-  "reports_to": "agent_id", "team": "string | null"
+  "reports_to": "agent_id",
+  "team": "string | null"
 }
 ```
 
@@ -477,16 +486,16 @@ waiting on you, and click any of them to intervene.
 
 ### 6.1 Risks and mitigations
 
-| Risk | Mitigation |
-|---|---|
-| Runaway spend (agents chatting or looping) | Per-run step/token caps, per-agent and per-project daily budgets with hard stop, task budgets, anti-chatter rules, cost meter in the header |
-| Agents talk instead of work | Every message must belong to a task/thread; escalation after N exchanges; manager stand-ups; "progress or stop" rule in the company prompt |
-| Sandbox escape / secret leakage | Docker isolation, no host mounts beyond the workspace volume, scoped tokens, secrets never in prompts, approval gates on outbound actions |
-| Prompt injection via tool output (web pages, repo contents, PR comments) | Tool results wrapped as untrusted data, no privileged instructions inside tool results, approvals for irreversible actions |
-| Context bloat over long tasks | Cache-friendly prompt layout, server-side compaction, context editing of old tool results, wiki as external memory |
-| Provider feature drift | Capabilities declared per adapter; UI hides unsupported options; adapters covered by contract tests |
-| Wiki/graph drift from reality | Every page and node carries evidence ids; lint job flags superseded sources; humans can edit |
-| Asset licensing for the office | Only permissively licensed packs, license files committed with assets |
+| Risk                                                                     | Mitigation                                                                                                                                  |
+| ------------------------------------------------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------- |
+| Runaway spend (agents chatting or looping)                               | Per-run step/token caps, per-agent and per-project daily budgets with hard stop, task budgets, anti-chatter rules, cost meter in the header |
+| Agents talk instead of work                                              | Every message must belong to a task/thread; escalation after N exchanges; manager stand-ups; "progress or stop" rule in the company prompt  |
+| Sandbox escape / secret leakage                                          | Docker isolation, no host mounts beyond the workspace volume, scoped tokens, secrets never in prompts, approval gates on outbound actions   |
+| Prompt injection via tool output (web pages, repo contents, PR comments) | Tool results wrapped as untrusted data, no privileged instructions inside tool results, approvals for irreversible actions                  |
+| Context bloat over long tasks                                            | Cache-friendly prompt layout, server-side compaction, context editing of old tool results, wiki as external memory                          |
+| Provider feature drift                                                   | Capabilities declared per adapter; UI hides unsupported options; adapters covered by contract tests                                         |
+| Wiki/graph drift from reality                                            | Every page and node carries evidence ids; lint job flags superseded sources; humans can edit                                                |
+| Asset licensing for the office                                           | Only permissively licensed packs, license files committed with assets                                                                       |
 
 ### 6.2 Decisions taken (assumptions, change if you disagree)
 

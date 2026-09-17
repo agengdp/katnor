@@ -36,7 +36,9 @@ const personaInputSchema = z.object({
 export const agentsRouter = router({
   list: publicProcedure.query(() => agentRepo.list()),
 
-  getById: publicProcedure.input(z.object({ id: z.string() })).query(({ input }) => agentRepo.getById(input.id)),
+  getById: publicProcedure
+    .input(z.object({ id: z.string() }))
+    .query(({ input }) => agentRepo.getById(input.id)),
 
   /**
    * A manual hire from the dashboard - unlike the `hire_agent` tool, this

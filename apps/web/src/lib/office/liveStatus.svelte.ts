@@ -7,7 +7,13 @@ import { subscribeToEvents, type KatnorEvent } from '$lib/eventsSocket';
  * shows the same live status list"), so "what is Ravi doing right now"
  * means the same thing in both places because it's the same store.
  */
-export type LiveAgentState = 'idle' | 'working' | 'talking' | 'waiting_human' | 'blocked' | 'offline';
+export type LiveAgentState =
+  | 'idle'
+  | 'working'
+  | 'talking'
+  | 'waiting_human'
+  | 'blocked'
+  | 'offline';
 
 export interface LiveAgentStatus {
   state: LiveAgentState;
@@ -18,7 +24,13 @@ export interface LiveAgentStatus {
   updatedAt: number;
 }
 
-const DEFAULT_STATUS: LiveAgentStatus = { state: 'idle', detail: null, taskId: null, runId: null, updatedAt: 0 };
+const DEFAULT_STATUS: LiveAgentStatus = {
+  state: 'idle',
+  detail: null,
+  taskId: null,
+  runId: null,
+  updatedAt: 0,
+};
 
 function str(payload: Record<string, unknown>, key: string): string | null {
   const value = payload[key];
@@ -43,7 +55,10 @@ class LiveStatusStore {
 
   private set(agentId: string, patch: Partial<Omit<LiveAgentStatus, 'updatedAt'>>): void {
     const existing = this.get(agentId);
-    this.statuses = { ...this.statuses, [agentId]: { ...existing, ...patch, updatedAt: Date.now() } };
+    this.statuses = {
+      ...this.statuses,
+      [agentId]: { ...existing, ...patch, updatedAt: Date.now() },
+    };
   }
 
   /**
@@ -115,7 +130,8 @@ class LiveStatusStore {
       }
       case 'agent.fired': {
         const agentId = str(payload, 'agent_id');
-        if (agentId) this.set(agentId, { state: 'offline', detail: null, taskId: null, runId: null });
+        if (agentId)
+          this.set(agentId, { state: 'offline', detail: null, taskId: null, runId: null });
         return;
       }
       case 'task.updated': {
@@ -124,7 +140,12 @@ class LiveStatusStore {
         // finished around it.
         if (str(payload, 'status') === 'blocked') {
           const assigneeId = str(payload, 'assignee_id');
-          if (assigneeId) this.set(assigneeId, { state: 'blocked', detail: null, taskId: str(payload, 'task_id') });
+          if (assigneeId)
+            this.set(assigneeId, {
+              state: 'blocked',
+              detail: null,
+              taskId: str(payload, 'task_id'),
+            });
         }
         return;
       }

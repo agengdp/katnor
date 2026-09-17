@@ -47,7 +47,11 @@ function scheduleReconnect() {
 
 function connect() {
   if (typeof window === 'undefined') return; // no sockets during SSR
-  if (socket && (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)) return;
+  if (
+    socket &&
+    (socket.readyState === WebSocket.OPEN || socket.readyState === WebSocket.CONNECTING)
+  )
+    return;
 
   try {
     socket = new WebSocket(wsUrl());

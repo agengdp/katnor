@@ -38,10 +38,17 @@ function hoursAgo(hours: number): Date {
   return new Date(Date.now() - hours * 60 * 60 * 1000);
 }
 
-async function summarize(projectName: string, messagesText: string, taskChangesText: string, staleText: string): Promise<string> {
+async function summarize(
+  projectName: string,
+  messagesText: string,
+  taskChangesText: string,
+  staleText: string,
+): Promise<string> {
   const sections = [
     `Project: ${projectName}`,
-    messagesText ? `Recent messages (last ${LOOKBACK_HOURS}h):\n${messagesText}` : `No new messages in the last ${LOOKBACK_HOURS}h.`,
+    messagesText
+      ? `Recent messages (last ${LOOKBACK_HOURS}h):\n${messagesText}`
+      : `No new messages in the last ${LOOKBACK_HOURS}h.`,
     taskChangesText ? `Task changes:\n${taskChangesText}` : 'No task status changes.',
     staleText ? `In-progress tasks with no update in ${STALE_TASK_DAYS}+ days:\n${staleText}` : '',
   ].filter((section) => section.length > 0);
@@ -63,7 +70,9 @@ async function summarize(projectName: string, messagesText: string, taskChangesT
       return `Stand-up summary unavailable (${result.errorMessage ?? result.refusalCategory ?? result.stopReason}).`;
     }
     const textBlock = result.content.find((block) => block.type === 'text');
-    return textBlock && textBlock.type === 'text' && textBlock.text.trim().length > 0 ? textBlock.text.trim() : 'Nothing notable to report.';
+    return textBlock && textBlock.type === 'text' && textBlock.text.trim().length > 0
+      ? textBlock.text.trim()
+      : 'Nothing notable to report.';
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
     return `Stand-up summary unavailable: ${message}`;
@@ -108,7 +117,11 @@ export async function runManagerStandup(projectId: string, boss: PgBoss): Promis
   await ensureProjectWiki(project.id, project.name);
   const existingLog = (await readPage(project.id, 'log.md')) ?? '# Change log\n\n';
   const dateStamp = new Date().toISOString().slice(0, 10);
-  await writePage(project.id, 'log.md', `${existingLog.trimEnd()}\n- **Stand-up ${dateStamp}**: ${summary.replace(/\s+/g, ' ')}\n`);
+  await writePage(
+    project.id,
+    'log.md',
+    `${existingLog.trimEnd()}\n- **Stand-up ${dateStamp}**: ${summary.replace(/\s+/g, ' ')}\n`,
+  );
   await commit(project.id, `Manager stand-up: ${project.name}`);
 
   if (projectChannel) {

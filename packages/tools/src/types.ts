@@ -60,5 +60,9 @@ export interface ToolRegistry<TContext> {
    */
   listForModel(names: string[], opts: { isSystem: boolean }): ProviderToolShape[];
   /** Never throws - an unknown tool or a thrown `execute()` both come back as `{isError: true}`. */
-  execute(name: string, input: Record<string, unknown>, ctx: TContext): Promise<ToolExecutionResult>;
+  execute(
+    name: string,
+    input: Record<string, unknown>,
+    ctx: TContext,
+  ): Promise<ToolExecutionResult>;
 }
