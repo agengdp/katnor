@@ -512,7 +512,9 @@
                         onclick={() => (selectedNodeId = otherId)}
                         class="flex items-center gap-1 text-left text-xs hover:underline"
                       >
-                        <Icon name={edge.from_id === selectedNode.id ? 'arrowRight' : 'arrowLeft'} />
+                        <Icon
+                          name={edge.from_id === selectedNode.id ? 'arrowRight' : 'arrowLeft'}
+                        />
                         {edge.type}
                         {other?.name ?? otherId}
                       </button>

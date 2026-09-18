@@ -199,11 +199,7 @@
     const iconSize = 13;
     const padding = 7;
     const gap = detail ? 5 : 0;
-    const truncated = detail
-      ? detail.length > 26
-        ? `${detail.slice(0, 26)}…`
-        : detail
-      : '';
+    const truncated = detail ? (detail.length > 26 ? `${detail.slice(0, 26)}…` : detail) : '';
 
     ctx.font = '11px system-ui, sans-serif';
     const textWidth = truncated ? ctx.measureText(truncated).width : 0;
@@ -472,8 +468,8 @@
   <div>
     <h1 class="text-2xl font-semibold">Office</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
-      Click a character to see what they're doing, or click the reception/whiteboard/bookshelf/server
-      rack to jump to Inbox/Projects/Knowledge/Runs.
+      Click a character to see what they're doing, or click the
+      reception/whiteboard/bookshelf/server rack to jump to Inbox/Projects/Knowledge/Runs.
     </p>
   </div>
 
