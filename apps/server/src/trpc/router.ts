@@ -11,6 +11,7 @@ import { projectsRouter } from './routers/projects.js';
 import { runsRouter } from './routers/runs.js';
 import { secretsRouter } from './routers/secrets.js';
 import { settingsRouter } from './routers/settings.js';
+import { setupRouter } from './routers/setup.js';
 import { tasksRouter } from './routers/tasks.js';
 import { teamsRouter } from './routers/teams.js';
 import { toolConfigsRouter } from './routers/toolConfigs.js';
@@ -25,6 +26,7 @@ import { router } from './trpc.js';
 export const appRouter = router({
   health: healthRouter,
   auth: authRouter,
+  setup: setupRouter,
   settings: settingsRouter,
   agents: agentsRouter,
   teams: teamsRouter,

@@ -72,8 +72,8 @@
   </form>
 
   <p class="text-xs text-[var(--color-text-muted)]">
-    No account yet? The first one is created by setting OWNER_EMAIL/OWNER_PASSWORD_HASH and running
-    `pnpm db:seed` - see .env.example. After that, anyone already logged in can add teammates under
-    Settings > Team members.
+    No account yet? A brand-new install sends you to the setup wizard instead of this page, which
+    creates the first account for you. If you are seeing this form, an account already exists -
+    anyone already logged in can add teammates under Settings &gt; Team members.
   </p>
 </div>

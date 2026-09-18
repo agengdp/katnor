@@ -9,6 +9,7 @@
   let { children } = $props();
 
   const LOGIN_PATH = '/login';
+  const SETUP_PATH = '/setup';
 
   /**
    * The app is login-only: nothing but the login page renders to a visitor
@@ -16,11 +17,12 @@
    * stay unmounted until `auth.me` confirms one.
    *
    * This gate is the user experience, not the security boundary. The real
-   * enforcement is server-side - every tRPC procedure except `auth.*` and
-   * `health.ping` is a `protectedProcedure`, `/artifacts/raw/:key` and
-   * `/export/backup` are behind `requireAuth`, and the `/ws/events`
-   * WebSocket rejects an unauthenticated upgrade (apps/server). A visitor
-   * who bypasses this component reaches a UI whose every request 401s.
+   * enforcement is server-side - every tRPC procedure except `auth.*`,
+   * `setup.*` and `health.ping` is a `protectedProcedure`,
+   * `/artifacts/raw/:key` and `/export/backup` are behind `requireAuth`,
+   * and the `/ws/events` WebSocket rejects an unauthenticated upgrade
+   * (apps/server). A visitor who bypasses this component reaches a UI
+   * whose every request 401s.
    *
    * `null` means "not checked yet", and is deliberately distinct from
    * `false`: rendering the login page at `null` would flash a login form at
@@ -29,21 +31,70 @@
   let authenticated = $state<boolean | null>(null);
   let currentUserName = $state<string | null>(null);
 
-  const onLoginPage = $derived($page.url.pathname === LOGIN_PATH);
+  /**
+   * Whether this install has never been set up - only meaningful while
+   * logged out, and only asked for then. A brand-new stack has no account
+   * to log into, so sending someone to a login form they cannot possibly
+   * satisfy is a dead end; they go to the setup wizard instead.
+   *
+   * `null` here means the same as above: not yet known. The logged-out
+   * screen waits for it rather than guessing, because guessing wrong
+   * flashes the wrong screen on exactly the first page load a new user
+   * ever sees.
+   */
+  let needsSetup = $state<boolean | null>(null);
+
+  /**
+   * True while `refreshAuth` is in flight.
+   *
+   * Without it, finishing setup or logging in bounces straight back to the
+   * form you just completed. Both flows end in `goto('/')`; that changes
+   * the pathname, which re-runs *both* effects below in the same flush -
+   * and the redirect effect reads `authenticated` while it is still the
+   * stale `false` from before the login, so it sends you back to /login or
+   * /setup a moment before the refreshed answer arrives.
+   *
+   * Set synchronously at the top of `refreshAuth`, before its first
+   * `await`, so it is already true by the time the redirect effect looks.
+   */
+  let authChecking = $state(true);
+
+  const publicPath = $derived(
+    $page.url.pathname === LOGIN_PATH || $page.url.pathname === SETUP_PATH,
+  );
 
   async function refreshAuth() {
+    authChecking = true;
     try {
       const result = await trpc().auth.me.query();
       authenticated = result.authenticated;
       currentUserName = result.user?.name ?? null;
     } catch {
       // A failed `auth.me` cannot be read as "logged in", so it has to
-      // fall to the login page. That does mean an unreachable apps/server
-      // presents as logged out - the login page's own error then says what
-      // actually went wrong, which is more use than a shell full of
-      // failing panels.
+      // fall through to the logged-out branch. That does mean an
+      // unreachable apps/server presents as logged out - the login page's
+      // own error then says what actually went wrong, which is more use
+      // than a shell full of failing panels.
       authenticated = false;
       currentUserName = null;
+    }
+
+    if (authenticated) {
+      needsSetup = false;
+      authChecking = false;
+      return;
+    }
+
+    try {
+      needsSetup = (await trpc().setup.status.query()).needsSetup;
+    } catch {
+      // Unreachable server. Fall back to the login page rather than the
+      // wizard: showing a stranger a "create the owner account" form
+      // because the server happened to be down would be the worse of the
+      // two wrong guesses.
+      needsSetup = false;
+    } finally {
+      authChecking = false;
     }
   }
 
@@ -57,7 +108,9 @@
   });
 
   $effect(() => {
-    if (authenticated === false && !onLoginPage) void goto(LOGIN_PATH);
+    if (authChecking || authenticated !== false || needsSetup === null) return;
+    const target = needsSetup ? SETUP_PATH : LOGIN_PATH;
+    if ($page.url.pathname !== target) void goto(target);
   });
 
   // Cost meter: real spend-vs-budget data (apps/server's runs.todaySpend -
@@ -117,19 +170,19 @@
   }
 </script>
 
-{#if authenticated === null}
+{#if authChecking || authenticated === null || (authenticated === false && needsSetup === null)}
   <div
     class="flex min-h-screen items-center justify-center bg-[var(--color-bg)] text-sm text-[var(--color-text-muted)]"
   >
     Checking your session…
   </div>
 {:else if !authenticated}
-  <!-- Logged out: the login page renders bare, with none of the app shell
-       around it. Any other path has already been redirected here by the
-       effect above; this branch just avoids rendering the shell during the
-       frame before that navigation lands. -->
+  <!-- Logged out: the login page and the setup wizard render bare, with
+       none of the app shell around them. Any other path has already been
+       redirected by the effect above; this branch just avoids rendering
+       the shell during the frame before that navigation lands. -->
   <div class="min-h-screen bg-[var(--color-bg)] p-4 text-[var(--color-text)] sm:p-6">
-    {#if onLoginPage}
+    {#if publicPath}
       {@render children()}
     {/if}
   </div>

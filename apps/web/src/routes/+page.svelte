@@ -3,8 +3,8 @@
   <p class="text-[var(--color-text-muted)]">
     Your AI company lives behind the sidebar: an office full of the employees you hire, their
     projects and kanban boards, the chat they work in, and everything they produce. The Office is
-    the natural home base, but it isn't built until Phase 4 - until then, Settings is the place to
-    start so the team has a provider API key to run on.
+    the natural home base. If your agents aren't running yet, Settings is where a provider API key
+    goes.
   </p>
   <div class="flex flex-wrap justify-center gap-3">
     <a

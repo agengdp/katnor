@@ -25,12 +25,14 @@
 /** Every icon name this set defines. Exhaustive, so a typo is a type error rather than a blank square. */
 export type IconName =
   | 'activity'
+  | 'alertTriangle'
   | 'arrowLeft'
   | 'arrowRight'
   | 'ban'
   | 'barChart'
   | 'book'
   | 'building'
+  | 'check'
   | 'clipboard'
   | 'cpu'
   | 'diff'
@@ -69,6 +71,8 @@ export const FILLED_ICONS: ReadonlySet<IconName> = new Set<IconName>(['dot']);
 export const ICON_PATHS: Record<IconName, readonly string[]> = {
   activity: ['M3 12H7L10 5L14 19L17 12H21'],
 
+  alertTriangle: ['M12 4L21.5 20.5H2.5Z', 'M12 10V14', 'M12 17.4V17.6'],
+
   arrowLeft: ['M19 12H5', 'M12 19L5 12L12 5'],
 
   arrowRight: ['M5 12H19', 'M12 5L19 12L12 19'],
@@ -89,6 +93,8 @@ export const ICON_PATHS: Record<IconName, readonly string[]> = {
     'M10 11H11',
     'M8 21V17H10V21',
   ],
+
+  check: ['M5 13L9 17L19 7'],
 
   clipboard: [
     'M8 4H6A1 1 0 0 0 5 5V20A1 1 0 0 0 6 21H18A1 1 0 0 0 19 20V5A1 1 0 0 0 18 4H16',
