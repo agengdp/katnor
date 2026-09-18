@@ -5,6 +5,7 @@ export * from './client.js';
 export * from './ulid.js';
 export * from './listen.js';
 export * from './crypto.js';
+export * from './bootstrap.js';
 export * from './schema/index.js';
 
 // Repositories are exported as namespaces (not `export *`) since several
