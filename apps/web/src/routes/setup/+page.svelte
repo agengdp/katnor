@@ -248,7 +248,10 @@ pnpm --filter @katnor/db db:post-migrate</pre>
          are, so the position is not carried by hue only. -->
     <ol class="flex items-center gap-2">
       {#each STEPS as definition, index (definition.title)}
-        <li class="flex flex-1 items-center gap-2" aria-current={index === step ? 'step' : undefined}>
+        <li
+          class="flex flex-1 items-center gap-2"
+          aria-current={index === step ? 'step' : undefined}
+        >
           <span
             class="flex h-7 w-7 shrink-0 items-center justify-center rounded-full border text-xs font-semibold {index <
             step
@@ -362,7 +365,9 @@ pnpm --filter @katnor/db db:post-migrate</pre>
         <p class="text-sm text-[var(--color-danger)]">{error}</p>
       {/if}
 
-      <div class="flex items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3">
+      <div
+        class="flex items-center justify-between gap-2 border-t border-[var(--color-border)] pt-3"
+      >
         {#if step > 0}
           <button
             type="button"
