@@ -12,5 +12,6 @@ export * from './extraction.js';
 export * from './search.js';
 export * from './ask.js';
 export * from './librarian.js';
+export * from './graphify.js';
 export * from './codeIndexer.js';
 export * from './wikiLint.js';

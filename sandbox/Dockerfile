@@ -12,6 +12,7 @@ FROM node:22-bookworm
 RUN apt-get update && apt-get install -y --no-install-recommends \
     python3 \
     python3-pip \
+    python3-venv \
     git \
     ripgrep \
     curl \
@@ -32,6 +33,26 @@ RUN npm install -g @anthropic-ai/claude-code
 # OPENAI_API_KEY is forwarded per-exec by that work tool, same as
 # ANTHROPIC_API_KEY above, so nothing needs to be baked in here for auth.
 RUN npm install -g @openai/codex
+
+# graphify (https://github.com/Graphify-Labs/graphify, Apache-2.0) is the
+# tree-sitter code indexer behind @katnor/knowledge's codeIndexer.ts. That
+# module runs `graphify extract . --code-only` in a repo clone here, then
+# maps the graph.json it writes onto kg_node/kg_edge. `--code-only` keeps it
+# to the local AST pass, so no API key is needed and nothing is forwarded
+# per-exec for it, unlike the two CLIs above.
+#
+# Installed into its own venv rather than via a bare `pip install`: Debian
+# bookworm marks the system Python as externally managed (PEP 668), so a
+# plain install refuses unless told to --break-system-packages, and writing
+# into system site-packages to get around that is worse than an isolated
+# venv. The symlink is what puts `graphify` on PATH for `docker exec`.
+#
+# Pinned deliberately: graphify is pre-1.0, and its graph.json shape is the
+# contract codeIndexer.ts parses. Unpinned, an image rebuild could change
+# that contract with nothing in this repo having changed.
+RUN python3 -m venv /opt/graphify \
+    && /opt/graphify/bin/pip install --no-cache-dir graphifyy==0.9.63 \
+    && ln -s /opt/graphify/bin/graphify /usr/local/bin/graphify
 
 WORKDIR /workspace
 
