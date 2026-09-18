@@ -12,7 +12,7 @@ import {
   writePage,
 } from '@katnor/knowledge';
 import { z } from 'zod';
-import { protectedProcedure, publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 async function requireProject(projectId: string) {
   const project = await projectRepo.getById(projectId);
@@ -28,15 +28,15 @@ async function requireProject(projectId: string) {
  * workspace access, which only apps/worker has.
  */
 export const knowledgeRouter = router({
-  search: publicProcedure
+  search: protectedProcedure
     .input(z.object({ projectId: z.string(), query: z.string() }))
     .query(({ input }) => searchKnowledge(input.projectId, input.query)),
 
-  askWiki: publicProcedure
+  askWiki: protectedProcedure
     .input(z.object({ projectId: z.string(), question: z.string() }))
     .mutation(({ input }) => answerWithCitations(input.projectId, input.question)),
 
-  listWikiPages: publicProcedure
+  listWikiPages: protectedProcedure
     .input(z.object({ projectId: z.string() }))
     .query(async ({ input }) => {
       const project = await requireProject(input.projectId);
@@ -53,7 +53,7 @@ export const knowledgeRouter = router({
       }));
     }),
 
-  getWikiPage: publicProcedure
+  getWikiPage: protectedProcedure
     .input(z.object({ projectId: z.string(), path: z.string() }))
     .query(async ({ input }) => {
       const content = await readPage(input.projectId, input.path);
@@ -100,15 +100,17 @@ export const knowledgeRouter = router({
       return row;
     }),
 
-  listGraph: publicProcedure.input(z.object({ projectId: z.string() })).query(async ({ input }) => {
-    const [nodes, edges] = await Promise.all([
-      kgNodeRepo.list({ project_id: input.projectId }),
-      kgEdgeRepo.listForProject(input.projectId),
-    ]);
-    // Embeddings are large (1536 floats) and never rendered - stripped
-    // before crossing the wire rather than sent and ignored.
-    return { nodes: nodes.map(({ embedding: _embedding, ...rest }) => rest), edges };
-  }),
+  listGraph: protectedProcedure
+    .input(z.object({ projectId: z.string() }))
+    .query(async ({ input }) => {
+      const [nodes, edges] = await Promise.all([
+        kgNodeRepo.list({ project_id: input.projectId }),
+        kgEdgeRepo.listForProject(input.projectId),
+      ]);
+      // Embeddings are large (1536 floats) and never rendered - stripped
+      // before crossing the wire rather than sent and ignored.
+      return { nodes: nodes.map(({ embedding: _embedding, ...rest }) => rest), edges };
+    }),
 
   reindexCode: protectedProcedure
     .input(z.object({ projectId: z.string() }))

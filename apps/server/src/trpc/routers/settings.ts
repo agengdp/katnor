@@ -3,7 +3,7 @@ import { z } from 'zod';
 import { approvalModeSchema, MODEL_COMBO_ENTRY_PROVIDERS } from '@katnor/core';
 import { companyRepo, providerConfig, ulid } from '@katnor/db';
 import { encryptSecret } from '../../crypto.js';
-import { protectedProcedure, publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 type ProviderConfigRow = typeof providerConfig.$inferSelect;
 
@@ -129,7 +129,7 @@ export const settingsRouter = router({
    * `default_model` isn't exposed here yet - nothing edits it outside the
    * seed script today.
    */
-  getCompanySettings: publicProcedure.query(() => companyRepo.getSettings()),
+  getCompanySettings: protectedProcedure.query(() => companyRepo.getSettings()),
 
   updateBudgets: protectedProcedure
     .input(

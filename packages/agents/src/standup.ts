@@ -129,7 +129,7 @@ export async function runManagerStandup(projectId: string, boss: PgBoss): Promis
       channelId: projectChannel.id,
       authorType: 'agent',
       authorId: STANDUP_AUTHOR_ID,
-      content: `📋 Daily stand-up: ${summary}`,
+      content: `Daily stand-up: ${summary}`,
     });
   }
 }

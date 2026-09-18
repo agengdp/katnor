@@ -2,6 +2,7 @@
   import type { ApprovalKind, ApprovalStatus } from '@katnor/core';
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents } from '$lib/eventsSocket';
+  import { Icon } from '$lib/icons';
 
   /**
    * What `approvals.list`/`approvals.decide` actually send over the wire.
@@ -241,9 +242,8 @@
         type="button"
         onclick={() => (confirmation = null)}
         class="shrink-0 text-[var(--color-text-muted)] hover:text-[var(--color-text)]"
-        aria-label="Dismiss"
       >
-        ✕
+        <Icon name="x" label="Dismiss" />
       </button>
     </div>
   {/if}

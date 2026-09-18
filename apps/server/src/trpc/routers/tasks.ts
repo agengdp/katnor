@@ -2,14 +2,14 @@ import { TASK_PRIORITIES, TASK_STATUSES } from '@katnor/core';
 import { triggerRun } from '@katnor/agents';
 import { eventRepo, taskRepo } from '@katnor/db';
 import { z } from 'zod';
-import { protectedProcedure, publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 export const tasksRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(z.object({ project_id: z.string().optional() }))
     .query(({ input }) => taskRepo.list(input)),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(({ input }) => taskRepo.getById(input.id)),
 

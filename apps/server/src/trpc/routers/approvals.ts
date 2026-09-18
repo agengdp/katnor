@@ -3,7 +3,7 @@ import { APPROVAL_STATUSES } from '@katnor/core';
 import { createAgentFromPayload, triggerRun } from '@katnor/agents';
 import { approvalRepo, eventRepo, runRepo } from '@katnor/db';
 import { z } from 'zod';
-import { protectedProcedure, publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 /**
  * The Inbox page (PLAN.md 4.9): pending approvals AND pending questions
@@ -11,11 +11,11 @@ import { protectedProcedure, publicProcedure, router } from '../trpc.js';
  * doc comment in @katnor/core's enums.ts.
  */
 export const approvalsRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(z.object({ status: z.enum(APPROVAL_STATUSES).optional() }))
     .query(({ input }) => approvalRepo.list(input.status)),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(({ input }) => approvalRepo.getById(input.id)),
 

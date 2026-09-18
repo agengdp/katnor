@@ -50,8 +50,15 @@ app.get('/health', (c) => c.json({ ok: true }));
  * presigned URL the browser hits directly, bypassing this route entirely,
  * but `getStorage().get(key)` works against either backend, so this stays
  * correct regardless of `ARTIFACT_STORAGE`.
+ *
+ * Behind `requireAuth`, like every other route here. Artifacts are agent
+ * output - diffs, screenshots, reports, whatever a run produced - so
+ * serving them to anyone who guesses a storage key would hand out the
+ * company's work regardless of how well the tRPC API around it is locked
+ * down. Storage keys are unguessable in practice, but "unguessable" is not
+ * an access control.
  */
-app.get('/artifacts/raw/:key', async (c) => {
+app.get('/artifacts/raw/:key', requireAuth, async (c) => {
   const key = c.req.param('key');
   let content: Buffer;
   try {
@@ -76,10 +83,9 @@ app.get('/artifacts/raw/:key', async (c) => {
  * `<a href>` GET rather than a tRPC procedure: tRPC's request/response path
  * is built around small JSON payloads and doesn't have a "stream this back
  * as a file download" mode, and a multi-table export is exactly the kind
- * of payload that doesn't belong going through it. Gated by `requireAuth`
- * (unlike /artifacts/raw above, which serves already-public artifact
- * bytes) - a backup bundles every table's data, so it needs the same login
- * check every settings.* tRPC procedure already enforces via
+ * of payload that doesn't belong going through it. Gated by `requireAuth`,
+ * like every other non-tRPC route here - a backup bundles every table's
+ * data, so it needs the same login check the tRPC surface enforces via
  * `protectedProcedure`.
  */
 app.get('/export/backup', requireAuth, async (c) => {

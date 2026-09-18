@@ -1,13 +1,13 @@
 import { agentRepo, companyRepo, projectRepo, runRepo, runStepRepo } from '@katnor/db';
 import { z } from 'zod';
-import { publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 export const runsRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(z.object({ agent_id: z.string().optional(), task_id: z.string().optional() }))
     .query(({ input }) => runRepo.list(input)),
 
-  getById: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+  getById: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
     const run = await runRepo.getById(input.id);
     if (!run) return undefined;
     const steps = await runStepRepo.list(input.id);
@@ -20,7 +20,7 @@ export const runsRouter = router({
    * feeds the header's cost meter chip (a Phase 0 TODO left unwired until
    * now) and the office's day/night tint (PLAN.md 4.8).
    */
-  todaySpend: publicProcedure.query(async () => {
+  todaySpend: protectedProcedure.query(async () => {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const [spentUsd, settings] = await Promise.all([
@@ -39,7 +39,7 @@ export const runsRouter = router({
    * ids, and there are never more than a few dozen agents/projects to
    * look up.
    */
-  costBreakdown: publicProcedure.query(async () => {
+  costBreakdown: protectedProcedure.query(async () => {
     const startOfToday = new Date();
     startOfToday.setHours(0, 0, 0, 0);
     const [byAgentRaw, byProjectRaw, agents, projects, settings] = await Promise.all([
