@@ -1,12 +1,12 @@
 import { DEFAULT_BOARD_COLUMNS } from '@katnor/core';
 import { channelRepo, eventRepo, projectRepo } from '@katnor/db';
 import { z } from 'zod';
-import { protectedProcedure, publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 export const projectsRouter = router({
-  list: publicProcedure.query(() => projectRepo.list()),
+  list: protectedProcedure.query(() => projectRepo.list()),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(({ input }) => projectRepo.getById(input.id)),
 

@@ -1,9 +1,9 @@
 import { eventRepo, teamRepo } from '@katnor/db';
 import { z } from 'zod';
-import { protectedProcedure, publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 export const teamsRouter = router({
-  list: publicProcedure.query(() => teamRepo.list()),
+  list: protectedProcedure.query(() => teamRepo.list()),
 
   create: protectedProcedure
     .input(

@@ -8,6 +8,18 @@ import { env } from '$env/dynamic/public';
  * Office in a later phase) calls `subscribeToEvents()` rather than each
  * opening its own socket.
  *
+ * The socket authenticates with the `katnor_session` cookie, which the
+ * browser attaches to the handshake on its own - there is no way to set a
+ * header on a browser `WebSocket`, so there is nothing to do here but make
+ * sure the cookie is in scope. It is whenever apps/web and apps/server
+ * share a registrable domain (`localhost:3000` and `localhost:3001` do -
+ * `SameSite=Lax` is site-based and ignores the port, as does
+ * `app.example.com` next to `api.example.com`). Serving the two from
+ * genuinely different domains would need the session cookie to be
+ * `SameSite=None; Secure`, which apps/server does not currently issue.
+ * An unauthenticated handshake is refused with a plain 401 and the
+ * reconnect loop below backs off against it.
+ *
  * Deliberately a plain callback pub/sub, not a Svelte store or a
  * `.svelte.ts` runes module - this file has no UI framework dependency, so
  * any component can layer its own `$state` on top of `subscribeToEvents`

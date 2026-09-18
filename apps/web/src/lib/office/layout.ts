@@ -1,3 +1,5 @@
+import type { IconName } from '../icons/paths.js';
+
 // Plain, non-reactive geometry helpers for the Office canvas (see
 // ../../routes/office/+page.svelte). A logical, fixed-size coordinate
 // space (CANVAS_WIDTH x CANVAS_HEIGHT) that the page scales to fit its
@@ -11,7 +13,8 @@ export interface Point {
 export interface Zone {
   id: string;
   label: string;
-  icon: string;
+  /** Drawn from the shared icon set (../icons/paths.ts) via ./iconCanvas.ts, so a zone looks the same as the sidebar entry it navigates to. */
+  icon: IconName;
   x: number;
   y: number;
   width: number;
@@ -33,7 +36,12 @@ export const RECEPTION: Point = { x: 95, y: 200 };
 export const MEETING_ROOM: Point = { x: CANVAS_WIDTH / 2, y: 190 };
 export const MEETING_ROOM_SIZE = { width: 200, height: 110 };
 
-/** A stable, distinct-enough color per agent id, so the same agent always reads as the same color across a session without needing a real sprite palette. */
+/**
+ * A stable, distinct-enough color per agent id, so the same agent reads as
+ * the same color everywhere. ./sprite.ts uses it as the shirt colour of
+ * that agent's generated character, which is what ties the office
+ * character to the colour the agent already has on the Team page.
+ */
 export function hashColor(id: string): string {
   let hash = 0;
   for (let i = 0; i < id.length; i++) {
@@ -41,14 +49,6 @@ export function hashColor(id: string): string {
   }
   const hue = hash % 360;
   return `hsl(${hue}, 55%, 50%)`;
-}
-
-export function initials(name: string): string {
-  const parts = name.trim().split(/\s+/).filter(Boolean);
-  return parts
-    .slice(0, 2)
-    .map((part) => part[0]?.toUpperCase() ?? '')
-    .join('');
 }
 
 /** A simple grid of desks below the zones/meeting-room row - one per non-CEO agent, in a stable id-sorted order so desk assignment doesn't shuffle as agents load. */
@@ -73,7 +73,7 @@ export function zones(): Zone[] {
     {
       id: 'reception',
       label: 'Reception (Inbox)',
-      icon: '📥',
+      icon: 'inbox',
       x: 30,
       y: 30,
       width: 110,
@@ -83,7 +83,7 @@ export function zones(): Zone[] {
     {
       id: 'whiteboard',
       label: 'Whiteboard (Projects)',
-      icon: '📋',
+      icon: 'presentation',
       x: CANVAS_WIDTH - 240,
       y: 30,
       width: 90,
@@ -93,7 +93,7 @@ export function zones(): Zone[] {
     {
       id: 'bookshelf',
       label: 'Bookshelf (Knowledge)',
-      icon: '📚',
+      icon: 'book',
       x: CANVAS_WIDTH - 140,
       y: 30,
       width: 90,
@@ -103,7 +103,7 @@ export function zones(): Zone[] {
     {
       id: 'rack',
       label: 'Server rack (Runs)',
-      icon: '⚙️',
+      icon: 'server',
       x: CANVAS_WIDTH - 240,
       y: 120,
       width: 90,

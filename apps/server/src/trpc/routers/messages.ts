@@ -1,10 +1,10 @@
 import { postMessage } from '@katnor/agents';
 import { messageRepo } from '@katnor/db';
 import { z } from 'zod';
-import { protectedProcedure, publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 export const messagesRouter = router({
-  list: publicProcedure
+  list: protectedProcedure
     .input(z.object({ channel_id: z.string(), since_message_id: z.string().optional() }))
     .query(({ input }) =>
       messageRepo.list(

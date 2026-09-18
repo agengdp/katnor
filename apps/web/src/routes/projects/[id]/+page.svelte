@@ -4,6 +4,7 @@
   import { subscribeToEvents } from '$lib/eventsSocket';
   import { dndzone } from 'svelte-dnd-action';
   import { flip } from 'svelte/animate';
+  import { Icon } from '$lib/icons';
 
   // Local mirrors of apps/server's Row shapes. Timestamps are plain ISO
   // strings on the wire (no superjson transformer), not Date objects, even
@@ -323,8 +324,12 @@
 </script>
 
 <div class="flex flex-col gap-6">
-  <a href="/projects" class="self-start text-sm text-[var(--color-text-muted)] hover:underline">
-    ← Back to projects
+  <a
+    href="/projects"
+    class="flex items-center gap-1.5 self-start text-sm text-[var(--color-text-muted)] hover:underline"
+  >
+    <Icon name="arrowLeft" />
+    Back to projects
   </a>
 
   {#if loading}

@@ -2,6 +2,7 @@
   import { page } from '$app/stores';
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents, type KatnorEvent } from '$lib/eventsSocket';
+  import { Icon, type IconName } from '$lib/icons';
 
   // Local wire-shape types for apps/server's runs/agents routers.
   //
@@ -86,12 +87,12 @@
     human: 'Human',
   };
 
-  const kindMeta: Record<RunStepKind, { label: string; icon: string }> = {
-    llm_call: { label: 'LLM call', icon: '🧠' },
-    tool_call: { label: 'Tool call', icon: '🔧' },
-    tool_result: { label: 'Tool result', icon: '↩️' },
-    message: { label: 'Message', icon: '💬' },
-    thinking_summary: { label: 'Thinking', icon: '💭' },
+  const kindMeta: Record<RunStepKind, { label: string; icon: IconName }> = {
+    llm_call: { label: 'LLM call', icon: 'cpu' },
+    tool_call: { label: 'Tool call', icon: 'wrench' },
+    tool_result: { label: 'Tool result', icon: 'replyArrow' },
+    message: { label: 'Message', icon: 'messageCircle' },
+    thinking_summary: { label: 'Thinking', icon: 'lightbulb' },
   };
 
   // Steps whose payload is a tool invocation/output get a visually distinct
@@ -625,10 +626,11 @@
         <div class="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            class="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-surface-muted)] lg:hidden"
+            class="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-surface-muted)] lg:hidden"
             onclick={closeTrace}
           >
-            ← Back to runs
+            <Icon name="arrowLeft" />
+            Back to runs
           </button>
           <h2 class="truncate text-lg font-semibold">
             {selectedRun ? agentName(selectedRun.agent_id) : 'Run'} trace
@@ -687,7 +689,7 @@
           {:else}
             <ol class="flex flex-col gap-2">
               {#each orderedSteps as step (step.id)}
-                {@const meta = kindMeta[step.kind] ?? { label: step.kind, icon: '•' }}
+                {@const meta = kindMeta[step.kind] ?? { label: step.kind, icon: 'dot' as IconName }}
                 <li
                   class="flex gap-3 rounded-lg border border-[var(--color-border)] p-3 {isToolKind(
                     step.kind,
@@ -703,7 +705,7 @@
                       <span
                         class="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-[var(--color-text-muted)]"
                       >
-                        <span aria-hidden="true">{meta.icon}</span>
+                        <Icon name={meta.icon} />
                         {meta.label}
                       </span>
                       {#if step.tokens != null}

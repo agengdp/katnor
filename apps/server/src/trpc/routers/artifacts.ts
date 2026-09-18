@@ -1,7 +1,7 @@
 import { getArtifactUrl } from '@katnor/artifacts';
 import { artifactRepo } from '@katnor/db';
 import { z } from 'zod';
-import { publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 /**
  * Artifacts v1 (PLAN.md 4.6): read-only from tRPC's side - creation only
@@ -13,7 +13,7 @@ import { publicProcedure, router } from '../trpc.js';
  * apps/server/src/index.ts) in local dev.
  */
 export const artifactsRouter = router({
-  listLatest: publicProcedure
+  listLatest: protectedProcedure
     .input(
       z.object({
         projectId: z.string().optional(),
@@ -29,15 +29,15 @@ export const artifactsRouter = router({
       }),
     ),
 
-  listGroup: publicProcedure
+  listGroup: protectedProcedure
     .input(z.object({ artifactGroupId: z.string() }))
     .query(({ input }) => artifactRepo.listGroup(input.artifactGroupId)),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(({ input }) => artifactRepo.getById(input.id)),
 
-  getUrl: publicProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
+  getUrl: protectedProcedure.input(z.object({ id: z.string() })).query(async ({ input }) => {
     const row = await artifactRepo.getById(input.id);
     if (!row) {
       throw new Error(`No artifact "${input.id}".`);

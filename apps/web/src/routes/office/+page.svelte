@@ -10,25 +10,27 @@
     MEETING_ROOM,
     MEETING_ROOM_SIZE,
     deskPositions,
-    hashColor,
-    initials,
     pointInRect,
     zones,
     type Point,
   } from '$lib/office/layout';
+  import { drawIcon } from '$lib/office/iconCanvas';
+  import { drawSprite, SPRITE_PIXELS, SPRITE_SCALE } from '$lib/office/spriteCanvas';
+  import type { IconName } from '$lib/icons';
+  import AgentSprite from '$lib/office/AgentSprite.svelte';
 
   /**
    * PLAN.md 4.8's 2D office, built as a plain Canvas 2D renderer rather
-   * than Phaser 3 + a Tiled map + a licensed pixel-art pack: this sandbox
-   * has no way to install/verify a game-engine dependency's exact runtime
-   * API, and no network access to legally source and bundle real sprite
-   * assets (see assets/office/LICENSES.md). Agents render as flat colored
-   * circles (a stable per-id hue, initials, and a name label) instead of
-   * sprites, and movement between desk/meeting-room/reception is a direct
-   * lerp rather than EasyStar.js grid pathfinding - there's no wall layout
-   * for it to route around yet. The *behavior* PLAN.md actually asks for
-   * (desks, states driven by live events, click-through zones, a day/night
-   * spend tint) is all real; only the rendering technology is substituted.
+   * than Phaser 3 + a Tiled map: this sandbox has no way to install or
+   * verify a game engine's exact runtime API, and a wrong guess there
+   * breaks the whole apps/web build.
+   *
+   * Agents render as pixelated 2D characters, one per agent, generated
+   * from the agent's id rather than cut from a licensed sprite pack -
+   * $lib/office/sprite.ts explains why, and assets/office/LICENSES.md
+   * records it. Movement between desk, meeting room and reception is a
+   * direct lerp rather than EasyStar.js grid pathfinding; there is no wall
+   * layout for it to route around yet.
    */
 
   interface AgentPersona {
@@ -180,30 +182,67 @@
     ctx.closePath();
   }
 
-  function drawBubble(ctx: CanvasRenderingContext2D, pos: Point, text: string): void {
-    const truncated = text.length > 26 ? `${text.slice(0, 26)}…` : text;
+  /**
+   * The speech bubble over a character: a state icon, and the run's own
+   * detail line beside it when there is one.
+   *
+   * The icon is measured into the layout rather than drawn on top of the
+   * text, so a bubble with no detail collapses to a neat icon-only chip
+   * instead of a wide empty box.
+   */
+  function drawBubble(
+    ctx: CanvasRenderingContext2D,
+    pos: Point,
+    icon: IconName,
+    detail: string | null,
+  ): void {
+    const iconSize = 13;
+    const padding = 7;
+    const gap = detail ? 5 : 0;
+    const truncated = detail
+      ? detail.length > 26
+        ? `${detail.slice(0, 26)}…`
+        : detail
+      : '';
+
     ctx.font = '11px system-ui, sans-serif';
-    const width = ctx.measureText(truncated).width + 14;
+    const textWidth = truncated ? ctx.measureText(truncated).width : 0;
+    const width = padding * 2 + iconSize + gap + textWidth;
     const height = 20;
     const bx = pos.x - width / 2;
-    const by = pos.y - 46;
+    const by = pos.y - SPRITE_PIXELS / 2 - height - 6;
+
     ctx.fillStyle = '#ffffff';
     ctx.strokeStyle = '#cbd5e1';
     ctx.lineWidth = 1;
     roundRect(ctx, bx, by, width, height, 6);
     ctx.fill();
     ctx.stroke();
-    ctx.fillStyle = '#111827';
-    ctx.fillText(truncated, pos.x, by + 14);
+
+    drawIcon(ctx, icon, {
+      x: bx + padding + iconSize / 2,
+      y: by + height / 2,
+      size: iconSize,
+      color: '#111827',
+      lineWidth: 1.5,
+    });
+
+    if (truncated) {
+      ctx.fillStyle = '#111827';
+      ctx.textAlign = 'left';
+      ctx.fillText(truncated, bx + padding + iconSize + gap, by + 14);
+      ctx.textAlign = 'center';
+    }
   }
 
-  const STATE_ICON: Record<LiveAgentState, string> = {
-    idle: '',
-    working: '🔧',
-    talking: '💬',
-    waiting_human: '❓',
-    blocked: '🚫',
-    offline: '',
+  /** `null` for the two states that deliberately show no bubble - an idle or offline agent is legible from the character alone. */
+  const STATE_ICON: Record<LiveAgentState, IconName | null> = {
+    idle: null,
+    working: 'wrench',
+    talking: 'messageSquare',
+    waiting_human: 'helpCircle',
+    blocked: 'ban',
+    offline: null,
   };
 
   function draw(ctx: CanvasRenderingContext2D): void {
@@ -240,8 +279,12 @@
       ctx.fillStyle = hoveredZoneId === zone.id ? '#dbeafe' : '#e2e8f0';
       roundRect(ctx, zone.x, zone.y, zone.width, zone.height, 8);
       ctx.fill();
-      ctx.font = '22px system-ui, sans-serif';
-      ctx.fillText(zone.icon, zone.x + zone.width / 2, zone.y + zone.height / 2 + 8);
+      drawIcon(ctx, zone.icon, {
+        x: zone.x + zone.width / 2,
+        y: zone.y + zone.height / 2,
+        size: 28,
+        color: '#475569',
+      });
       ctx.font = '10px system-ui, sans-serif';
       ctx.fillStyle = '#475569';
       ctx.fillText(zone.label, zone.x + zone.width / 2, zone.y + zone.height + 13);
@@ -257,53 +300,71 @@
       }
     }
 
-    // Desk outlines.
+    // Desks, drawn under where the character's feet land rather than
+    // centred on the character - a 48px-tall character centred in a 40px
+    // box would stand in front of its own desk.
     for (const pos of deskByAgentId.values()) {
       ctx.strokeStyle = '#cbd5e1';
       ctx.lineWidth = 1;
-      ctx.strokeRect(pos.x - 30, pos.y - 20, 60, 40);
+      ctx.strokeRect(pos.x - 30, pos.y + SPRITE_PIXELS / 2 - 6, 60, 20);
     }
 
-    // Agents.
+    // Agents, as their generated pixel characters.
     for (const agent of agents) {
       const target = targetFor(agent);
       const pos = ensurePos(agent);
-      pos.x += (target.x - pos.x) * 0.08;
-      pos.y += (target.y - pos.y) * 0.08;
+      const dx = target.x - pos.x;
+      const dy = target.y - pos.y;
+      pos.x += dx * 0.08;
+      pos.y += dy * 0.08;
 
       const state = liveStateFor(agent);
       const status = liveStatusStore.get(agent.id);
-      const pulsing = state === 'working' ? Math.sin(now / 220) * 2 : 0;
-      const radius = 16 + pulsing;
+
+      // Two reasons to show the stride frame: actually crossing the room,
+      // or working at a desk (a slower shuffle, so a busy agent reads as
+      // busy without going anywhere). The threshold is in logical pixels -
+      // the lerp above never quite reaches its target, so "moving" has to
+      // mean "still meaningfully far away", not "not exactly there".
+      const moving = Math.hypot(dx, dy) > 1.5;
+      const stride = moving
+        ? Math.floor(now / 140) % 2 === 1
+        : state === 'working' && Math.floor(now / 420) % 2 === 1;
+
+      // A whole-sprite-pixel bob, never a fractional one: a sub-pixel
+      // offset would land the character's pixels off the grid and blur the
+      // exact edges $lib/office/spriteCanvas.ts takes care to produce.
+      const bob = state === 'working' && Math.floor(now / 260) % 2 === 1 ? -SPRITE_SCALE : 0;
 
       ctx.globalAlpha = state === 'offline' ? 0.35 : 1;
-      ctx.beginPath();
-      ctx.arc(pos.x, pos.y, radius, 0, Math.PI * 2);
-      ctx.fillStyle = selectedAgentId === agent.id ? '#1f2937' : hashColor(agent.id);
-      ctx.fill();
-      if (state === 'blocked') {
+
+      const boxX = pos.x - SPRITE_PIXELS / 2;
+      const boxY = pos.y - SPRITE_PIXELS / 2;
+      if (selectedAgentId === agent.id) {
+        ctx.strokeStyle = '#1f2937';
+        ctx.lineWidth = 2;
+        ctx.setLineDash([4, 3]);
+        ctx.strokeRect(boxX - 3, boxY - 3, SPRITE_PIXELS + 6, SPRITE_PIXELS + 6);
+        ctx.setLineDash([]);
+      } else if (state === 'blocked') {
         ctx.strokeStyle = '#ef4444';
-        ctx.lineWidth = 3;
-        ctx.stroke();
+        ctx.lineWidth = 2;
+        ctx.strokeRect(boxX - 3, boxY - 3, SPRITE_PIXELS + 6, SPRITE_PIXELS + 6);
       } else if (agent.is_system) {
         ctx.strokeStyle = '#f59e0b';
         ctx.lineWidth = 2;
-        ctx.stroke();
+        ctx.strokeRect(boxX - 3, boxY - 3, SPRITE_PIXELS + 6, SPRITE_PIXELS + 6);
       }
-      ctx.globalAlpha = 1;
 
-      ctx.fillStyle = '#ffffff';
-      ctx.font = 'bold 11px system-ui, sans-serif';
-      ctx.fillText(initials(agent.name), pos.x, pos.y + 4);
+      drawSprite(ctx, agent.id, stride ? 1 : 0, pos.x, pos.y + bob);
+      ctx.globalAlpha = 1;
 
       ctx.fillStyle = '#334155';
       ctx.font = '11px system-ui, sans-serif';
-      ctx.fillText(agent.name, pos.x, pos.y + radius + 15);
+      ctx.fillText(agent.name, pos.x, pos.y + SPRITE_PIXELS / 2 + 14);
 
       const icon = STATE_ICON[state];
-      if (icon) {
-        drawBubble(ctx, pos, status.detail ? `${icon} ${status.detail}` : icon);
-      }
+      if (icon) drawBubble(ctx, pos, icon, status.detail);
     }
   }
 
@@ -331,7 +392,19 @@
     for (const agent of agents) {
       const pos = currentPos.get(agent.id);
       if (!pos) continue;
-      if (Math.hypot(point.x - pos.x, point.y - pos.y) <= 20) return agent;
+      // The character's own box, so the clickable area matches what is
+      // drawn rather than the circle this used to render.
+      if (
+        pointInRect(
+          point.x,
+          point.y,
+          pos.x - SPRITE_PIXELS / 2,
+          pos.y - SPRITE_PIXELS / 2,
+          SPRITE_PIXELS,
+          SPRITE_PIXELS,
+        )
+      )
+        return agent;
     }
     return null;
   }
@@ -399,7 +472,7 @@
   <div>
     <h1 class="text-2xl font-semibold">Office</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
-      Click a desk to see what someone's doing, or click the reception/whiteboard/bookshelf/server
+      Click a character to see what they're doing, or click the reception/whiteboard/bookshelf/server
       rack to jump to Inbox/Projects/Knowledge/Runs.
     </p>
   </div>
@@ -429,23 +502,26 @@
     >
       {#if !selectedAgent}
         <p class="text-[var(--color-text-muted)]">
-          Click someone's desk to see their persona and live status, or send them a quick message.
+          Click a character to see their persona and live status, or send them a quick message.
         </p>
       {:else}
         {@const status = liveStatusStore.get(selectedAgent.id)}
         {@const state = liveStateFor(selectedAgent)}
         <div class="flex flex-col gap-3">
-          <div>
-            <div class="flex items-center gap-2">
-              <h2 class="font-semibold">{selectedAgent.name}</h2>
-              {#if selectedAgent.is_system}
-                <span
-                  class="rounded-full border border-[var(--color-accent)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]"
-                  >CEO</span
-                >
-              {/if}
+          <div class="flex items-start gap-3">
+            <AgentSprite agentId={selectedAgent.id} label={`${selectedAgent.name}'s character`} />
+            <div class="min-w-0">
+              <div class="flex items-center gap-2">
+                <h2 class="font-semibold">{selectedAgent.name}</h2>
+                {#if selectedAgent.is_system}
+                  <span
+                    class="rounded-full border border-[var(--color-accent)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]"
+                    >CEO</span
+                  >
+                {/if}
+              </div>
+              <p class="text-[var(--color-text-muted)]">{selectedAgent.title}</p>
             </div>
-            <p class="text-[var(--color-text-muted)]">{selectedAgent.title}</p>
           </div>
 
           <p class="text-xs">

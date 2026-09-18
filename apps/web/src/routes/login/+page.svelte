@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { trpc } from '$lib/trpc';
+  import { Icon } from '$lib/icons';
 
   let email = $state('');
   let password = $state('');
@@ -24,10 +25,13 @@
 
 <div class="mx-auto flex max-w-sm flex-col gap-6 pt-12">
   <div>
-    <h1 class="text-2xl font-semibold">Log in</h1>
+    <h1 class="flex items-center gap-2 text-2xl font-semibold">
+      <Icon name="lock" size="0.9em" />
+      Log in
+    </h1>
     <p class="mt-1 text-sm text-[var(--color-text-muted)]">
-      Everyone can watch the company work; logging in lets you change things - settings, hires,
-      tasks, and messages.
+      Katnor is private. Everything - the office, projects, chat, runs and settings - is behind this
+      form.
     </p>
   </div>
 

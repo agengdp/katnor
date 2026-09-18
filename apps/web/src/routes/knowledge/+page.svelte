@@ -1,6 +1,7 @@
 <script lang="ts">
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents } from '$lib/eventsSocket';
+  import { Icon } from '$lib/icons';
 
   interface ProjectRow {
     id: string;
@@ -509,9 +510,9 @@
                       <button
                         type="button"
                         onclick={() => (selectedNodeId = otherId)}
-                        class="text-left text-xs hover:underline"
+                        class="flex items-center gap-1 text-left text-xs hover:underline"
                       >
-                        {edge.from_id === selectedNode.id ? '→' : '←'}
+                        <Icon name={edge.from_id === selectedNode.id ? 'arrowRight' : 'arrowLeft'} />
                         {edge.type}
                         {other?.name ?? otherId}
                       </button>
@@ -558,9 +559,9 @@
                     <button
                       type="button"
                       onclick={() => openCitation(citation)}
-                      class="rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs hover:bg-[var(--color-surface-muted)]"
+                      class="inline-flex items-center gap-1 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs hover:bg-[var(--color-surface-muted)]"
                     >
-                      {citation.kind === 'wiki_page' ? '📝' : '🔗'}
+                      <Icon name={citation.kind === 'wiki_page' ? 'pencil' : 'link'} />
                       {citation.title}
                     </button>
                   {/each}

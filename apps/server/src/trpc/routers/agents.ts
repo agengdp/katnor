@@ -6,7 +6,7 @@ import {
 } from '@katnor/core';
 import { agentRepo, eventRepo } from '@katnor/db';
 import { z } from 'zod';
-import { protectedProcedure, publicProcedure, router } from '../trpc.js';
+import { protectedProcedure, router } from '../trpc.js';
 
 const modelConfigInputSchema = z.object({
   provider: z.enum(MODEL_PROVIDERS),
@@ -34,9 +34,9 @@ const personaInputSchema = z.object({
  * through this HTTP surface.
  */
 export const agentsRouter = router({
-  list: publicProcedure.query(() => agentRepo.list()),
+  list: protectedProcedure.query(() => agentRepo.list()),
 
-  getById: publicProcedure
+  getById: protectedProcedure
     .input(z.object({ id: z.string() }))
     .query(({ input }) => agentRepo.getById(input.id)),
 

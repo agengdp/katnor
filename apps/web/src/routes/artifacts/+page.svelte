@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import { trpc, serverOrigin } from '$lib/trpc';
   import { subscribeToEvents } from '$lib/eventsSocket';
+  import { Icon, type IconName } from '$lib/icons';
 
   // Local mirror of apps/server's Row shape - see projects/[id]/+page.svelte's
   // comment on why timestamps stay plain strings here (no superjson transformer).
@@ -22,15 +23,15 @@
     metadata: Record<string, unknown>;
   }
 
-  const kindIcons: Record<ArtifactKind, string> = {
-    file: '📄',
-    diff: '🔀',
-    pr: '🔗',
-    doc: '📝',
-    image: '🖼️',
-    design: '🎨',
-    link: '🔗',
-    report: '📊',
+  const kindIcons: Record<ArtifactKind, IconName> = {
+    file: 'fileText',
+    diff: 'diff',
+    pr: 'pullRequest',
+    doc: 'pencil',
+    image: 'image',
+    design: 'layers',
+    link: 'link',
+    report: 'barChart',
   };
 
   let artifacts = $state<ArtifactRow[]>([]);
@@ -177,7 +178,7 @@
           : 'border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'}"
         onclick={() => (kindFilter = kind)}
       >
-        {kindIcons[kind]}
+        <Icon name={kindIcons[kind]} />
         {kind}
       </button>
     {/each}
@@ -210,7 +211,7 @@
               : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'}"
           >
             <div class="flex items-center gap-2">
-              <span aria-hidden="true">{kindIcons[row.kind]}</span>
+              <Icon name={kindIcons[row.kind]} />
               <span class="font-medium leading-snug">{row.title}</span>
             </div>
             <div class="flex items-center gap-2 text-xs text-[var(--color-text-muted)]">
@@ -236,9 +237,10 @@
                   href={previewUrl}
                   target="_blank"
                   rel="noreferrer"
-                  class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+                  class="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
                 >
-                  Open raw ↗
+                  Open raw
+                  <Icon name="externalLink" />
                 </a>
               {/if}
             </div>
