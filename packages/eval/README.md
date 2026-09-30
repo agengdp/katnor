@@ -21,7 +21,7 @@ Exits non-zero if any task fails or times out, printing a `PASS`/`FAIL` line wit
 
 This is an integration test, not a unit test - it needs a real, running stack:
 
-- `DATABASE_URL` pointing at a migrated Postgres (pgvector extension enabled, `db:post-migrate` run).
+- `DATABASE_URL` pointing at a migrated Postgres (the full `db:generate` / `db:pre-migrate` / `db:migrate` / `db:post-migrate` chain run).
 - `ANTHROPIC_API_KEY` set (the eval agent runs on the `anthropic` provider).
 - `@katnor/worker` actually running and processing `agent-run` jobs from the same database - this
   script only enqueues the job and polls for its result, it does not execute agent runs itself.

@@ -8,6 +8,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "db:generate": "NODE_OPTIONS=\"--import tsx\" drizzle-kit generate",
+    "db:pre-migrate": "tsx src/applyPreMigrate.ts",
     "db:migrate": "drizzle-kit migrate",
     "db:migrate:apply": "tsx src/migrate.ts",
     "db:post-migrate": "tsx src/applyPostMigrate.ts",

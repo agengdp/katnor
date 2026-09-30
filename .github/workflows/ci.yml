@@ -137,10 +137,16 @@ jobs:
             fi
           done
 
+      # Before migrate, not after: the generated tables have vector(1536)
+      # columns and Postgres cannot parse that type until the extension
+      # exists.
+      - name: Pre-migrate (pgvector extension)
+        run: pnpm --filter @katnor/db db:pre-migrate
+
       - name: Migrate
         run: pnpm --filter @katnor/db db:migrate
 
-      - name: Post-migrate (pgvector + event trigger)
+      - name: Post-migrate (event notify trigger)
         run: pnpm --filter @katnor/db db:post-migrate
 
       - name: Verify first-run bootstrap

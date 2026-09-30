@@ -7,12 +7,22 @@ the source of truth for how every entity in the domain model is stored.
 
 ```
 pnpm db:generate      # drizzle-kit reads src/schema and writes SQL migrations to ./drizzle
+pnpm db:pre-migrate   # tsx src/applyPreMigrate.ts - installs the pgvector extension
 pnpm db:migrate       # drizzle-kit applies ./drizzle/*.sql to DATABASE_URL
-pnpm db:post-migrate  # tsx src/applyPostMigrate.ts - enables pgvector, installs the event-notify trigger
+pnpm db:post-migrate  # tsx src/applyPostMigrate.ts - installs the event-notify trigger
 pnpm db:seed          # tsx src/seed.ts - creates the company row, the system CEO agent, and the first user
 ```
 
-Run them in that order, every time the schema changes. All four are idempotent - safe to re-run.
+Run them in that order, every time the schema changes. All of them are idempotent - safe to re-run.
+
+The order is not arbitrary in either direction. `pre-migrate` has to come **before** `migrate`,
+because the generated tables declare `vector(1536)` columns and Postgres cannot parse that type
+until the extension exists. `post-migrate` has to come **after**, because its trigger is attached
+to the `event` table. Both used to live in one after-the-fact script, which made a fresh install
+impossible to complete.
+
+`db:seed` is optional: the browser setup wizard at `/setup` does the same thing (both call
+`src/bootstrap.ts`), and is the easier path unless you are automating an install.
 
 `DATABASE_URL` must be set (see the repo root `.env.example`; local dev via `docker-compose.yml`
 defaults to `postgresql://katnor:katnor@localhost:5432/katnor`). `COMPANY_NAME` is optional and only
@@ -21,19 +31,26 @@ read by `db:seed`, and only to create the very first `user` row if no user exist
 in until one does (Phase 5's multi-user auth has no self-serve signup; every other user is created by
 an already-logged-in one through Settings > Team members).
 
-### `db:generate` could not be run in this environment
+### The `./drizzle/` directory is not committed yet
 
-This package's schema (`src/schema/`) was written by hand, but **`pnpm db:generate` has not been
-run** - this sandbox has no outbound network access, so `drizzle-kit` (and every other dependency)
-could not be installed. As a result:
+The schema in `src/schema/` was written by hand and `pnpm db:generate` has not been committed from,
+so `./drizzle/` (the SQL migrations plus drizzle-kit's `meta/` snapshot) does not exist in the repo.
 
-- The `./drizzle/` directory (SQL migration files + drizzle-kit's `meta/` snapshot) **does not
-  exist yet**.
-- Nobody should hand-write it: run `pnpm install` followed by `pnpm db:generate` once this package
-  has real network/registry access, review the generated SQL, commit it, and only then run
-  `pnpm db:migrate` against a real database.
-- Until that first `db:generate` has run, `db:migrate`, `db:post-migrate`, and `db:seed` all have
-  nothing to apply against and will fail (or run against an empty database with no tables).
+An earlier version of this note blamed the sandbox's lack of registry access. That was wrong, and
+worth recording because the real reason was a bug nobody had hit: `db:generate` did not work at
+all. `drizzle.config.ts` imported `./src/env.js`, and the schema barrel re-exports `./columns.js`
+and friends - the `.js` extensions NodeNext requires - while drizzle-kit loads both through a
+CommonJS `require` that resolves those literally, against files that do not exist. It failed with
+`MODULE_NOT_FOUND` on any machine, and on the schema it failed while still exiting 0, so the
+migration came out empty and `db:migrate` cheerfully reported success over it.
+
+Both are fixed (the config is standalone; `db:generate` runs under the tsx loader), and CI's `db`
+job now runs the whole chain against a real pgvector Postgres and fails if the generated migration
+does not contain the tables it should.
+
+To commit the migrations: run `pnpm db:generate`, review the SQL, and commit `./drizzle/`. The CI
+job also uploads exactly what it generated as a `drizzle-migrations` artifact, which is the way to
+get them from a machine that cannot reach the npm registry.
 
 ## What's in here
 

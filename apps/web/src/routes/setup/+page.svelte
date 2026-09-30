@@ -206,6 +206,7 @@
       <p class="text-sm text-[var(--color-text-muted)]">Run these once, then reload this page:</p>
       <pre
         class="overflow-x-auto rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-3 text-xs">pnpm --filter @katnor/db db:generate
+pnpm --filter @katnor/db db:pre-migrate
 pnpm --filter @katnor/db db:migrate
 pnpm --filter @katnor/db db:post-migrate</pre>
       <p class="text-xs text-[var(--color-text-muted)]">

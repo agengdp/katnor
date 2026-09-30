@@ -11,8 +11,9 @@
  * steps. This script stays for scripted and unattended installs, where
  * there is nobody to fill in a form.
  *
- * Run after `db:post-migrate`, e.g.:
- *   pnpm db:generate && pnpm db:migrate && pnpm db:post-migrate && pnpm db:seed
+ * Run last in the chain, e.g.:
+ *   pnpm db:generate && pnpm db:pre-migrate && pnpm db:migrate &&
+ *     pnpm db:post-migrate && pnpm db:seed
  */
 import { client } from './client.js';
 import {

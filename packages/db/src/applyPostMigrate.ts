@@ -2,28 +2,28 @@
  * Runs the one-off, idempotent SQL that drizzle-kit's migrations don't
  * (and shouldn't) own, because it isn't a table/column change:
  *
- *   1. `CREATE EXTENSION IF NOT EXISTS vector;` - required before any
- *      `vector(n)` column (kg_node.embedding, wiki_page.embedding) can be
- *      used. Must run before everything else below.
- *   2. A `katnor_notify_event()` plpgsql function that `pg_notify`s the
+ *   1. A `katnor_notify_event()` plpgsql function that `pg_notify`s the
  *      `katnor_events` channel with the inserted row as JSON.
- *   3. A trigger on the `event` table that calls that function
+ *   2. A trigger on the `event` table that calls that function
  *      `AFTER INSERT`, so every appended event is broadcast live - see
  *      src/listen.ts for the subscriber side.
  *
- * Run this after `db:migrate`, e.g.:
- *   pnpm db:generate && pnpm db:migrate && pnpm db:post-migrate
+ * Both of these need the `event` table to exist, so this runs AFTER the
+ * migrations. `CREATE EXTENSION vector` used to be the first statement
+ * here and has moved to ./applyPreMigrate.ts - it has the opposite
+ * requirement (the migrations cannot run without it), and having both
+ * halves in one after-the-fact script made the whole chain impossible to
+ * satisfy on a fresh database. See that file for the full story.
  *
- * Every statement here is written to be safe to run repeatedly (CREATE
- * EXTENSION IF NOT EXISTS, CREATE OR REPLACE FUNCTION, DROP TRIGGER IF
- * EXISTS + CREATE TRIGGER).
+ * The chain is: generate -> pre-migrate -> migrate -> post-migrate ->
+ * (the setup wizard, or db:seed).
+ *
+ * Every statement here is written to be safe to run repeatedly (CREATE OR
+ * REPLACE FUNCTION, DROP TRIGGER IF EXISTS + CREATE TRIGGER).
  */
 import { client } from './client.js';
 
 async function main() {
-  console.log('[applyPostMigrate] CREATE EXTENSION IF NOT EXISTS vector;');
-  await client`CREATE EXTENSION IF NOT EXISTS vector;`;
-
   console.log('[applyPostMigrate] CREATE OR REPLACE FUNCTION katnor_notify_event();');
   await client`
     CREATE OR REPLACE FUNCTION katnor_notify_event() RETURNS trigger AS $$
@@ -45,7 +45,7 @@ async function main() {
     EXECUTE FUNCTION katnor_notify_event();
   `;
 
-  console.log('[applyPostMigrate] done: vector extension ensured, event notify trigger installed.');
+  console.log('[applyPostMigrate] done: event notify trigger installed.');
   await client.end();
   process.exit(0);
 }

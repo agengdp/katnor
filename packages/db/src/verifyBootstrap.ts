@@ -13,8 +13,9 @@
  *     a real database can.
  *   - `ensureCompanyBootstrap` claims to be idempotent. Running it twice
  *     against a real database is the only way to find out.
- *   - `db:post-migrate` enables pgvector and installs the event-notify
- *     trigger. Both are plain SQL side effects with no other test.
+ *   - `db:pre-migrate` installs pgvector and `db:post-migrate` installs the
+ *     event-notify trigger. Both are plain SQL side effects with no other
+ *     test.
  *
  * Deliberately a script rather than a vitest file: `pnpm test` runs
  * everywhere, including machines and CI jobs with no Postgres, and a suite

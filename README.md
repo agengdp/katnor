@@ -23,9 +23,11 @@ The full build plan is in [PLAN.md](./PLAN.md).
    to generate each one).
 2. Start the infrastructure services: `docker compose up -d postgres minio`.
 3. Install dependencies: `pnpm install`.
-4. Set up the database: `pnpm --filter @katnor/db db:generate`, then `db:migrate`, then
-   `db:post-migrate` (enables the `pgvector` extension and installs the event-notify trigger the
-   server's WebSocket layer depends on).
+4. Set up the database, in this order:
+   `pnpm --filter @katnor/db db:generate`, then `db:pre-migrate` (installs the `pgvector`
+   extension — the migrations create `vector(1536)` columns and cannot run without it), then
+   `db:migrate`, then `db:post-migrate` (installs the event-notify trigger the server's WebSocket
+   layer depends on, which needs the tables to exist).
 5. Start everything in dev mode: `pnpm dev`.
 6. Open the dashboard and finish setup in the browser. A brand-new install sends you to `/setup`,
    a short wizard that names the company, creates the first account, and optionally takes a model
