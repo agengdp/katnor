@@ -35,7 +35,7 @@ services:
       - postgres-data:/var/lib/postgresql/data
     # No `ports:`. The other services reach it over the compose network.
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-katnor} -d ${POSTGRES_DB:-katnor}"]
+      test: ['CMD-SHELL', 'pg_isready -U ${POSTGRES_USER:-katnor} -d ${POSTGRES_DB:-katnor}']
       interval: 5s
       timeout: 5s
       retries: 20
@@ -54,7 +54,7 @@ services:
   # this image has no build toolchain, only the runtime dependencies.
   migrate:
     image: ${KATNOR_IMAGE_PREFIX:-ghcr.io/agengdp/katnor}-server:${KATNOR_VERSION:-latest}
-    restart: "no"
+    restart: 'no'
     depends_on:
       postgres:
         condition: service_healthy
@@ -90,7 +90,7 @@ services:
       - wiki-data:/data/wiki
       - artifact-data:/data/artifacts
     ports:
-      - "${SERVER_PORT:-3001}:${SERVER_PORT:-3001}"
+      - '${SERVER_PORT:-3001}:${SERVER_PORT:-3001}'
     networks:
       - katnor
 
@@ -140,7 +140,7 @@ services:
       PUBLIC_SERVER_URL: ${PUBLIC_SERVER_URL:?PUBLIC_SERVER_URL is required - the URL browsers reach apps/server on}
       PORT: ${WEB_PORT:-3000}
     ports:
-      - "${WEB_PORT:-3000}:${WEB_PORT:-3000}"
+      - '${WEB_PORT:-3000}:${WEB_PORT:-3000}'
     networks:
       - katnor
 
