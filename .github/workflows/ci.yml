@@ -104,6 +104,39 @@ jobs:
       - name: Generate migrations
         run: pnpm --filter @katnor/db db:generate
 
+      # drizzle-kit printed MODULE_NOT_FOUND for the schema barrel and still
+      # exited 0, so the step above went green while emitting a migration
+      # with no tables in it. `db:migrate` then reported "migrations applied
+      # successfully" for that empty file, and the first honest failure came
+      # two steps later, in post-migrate, as `relation "event" does not
+      # exist`. A generator that silently produces nothing is the failure
+      # mode worth guarding, not the one worth trusting.
+      - name: Check the generated migration is not empty
+        run: |
+          set -euo pipefail
+          dir=packages/db/drizzle
+          if ! ls "$dir"/*.sql >/dev/null 2>&1; then
+            echo "::error::db:generate produced no .sql files in $dir"
+            ls -la "$dir" || true
+            exit 1
+          fi
+          tables=$(cat "$dir"/*.sql | grep -c 'CREATE TABLE' || true)
+          echo "generated $tables CREATE TABLE statement(s)"
+          # 19 tables in packages/db/src/schema today. Asserting a floor
+          # rather than the exact count so adding a table does not fail CI,
+          # while an empty or near-empty generate still does.
+          if [ "$tables" -lt 15 ]; then
+            echo "::error::only $tables CREATE TABLE statements generated - the schema did not load"
+            cat "$dir"/*.sql
+            exit 1
+          fi
+          for table in event "user" company agent run kg_node; do
+            if ! grep -qi "CREATE TABLE \"$table\"" "$dir"/*.sql; then
+              echo "::error::no CREATE TABLE for \"$table\" in the generated migration"
+              exit 1
+            fi
+          done
+
       - name: Migrate
         run: pnpm --filter @katnor/db db:migrate
 
