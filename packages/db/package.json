@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:migrate:apply": "tsx src/migrate.ts",
     "db:post-migrate": "tsx src/applyPostMigrate.ts",
     "db:seed": "tsx src/seed.ts",
     "db:verify": "tsx src/verifyBootstrap.ts"
