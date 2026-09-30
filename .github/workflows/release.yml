@@ -1,0 +1,80 @@
+name: Release images
+
+# Builds and publishes the three application images to GHCR.
+#
+# On a push to main this publishes `:main` and `:<sha>`; on a tag it also
+# publishes the version and `:latest`. docker-compose.prod.yml pulls
+# whichever tag KATNOR_VERSION names, so a deploy is a tag change plus
+# `docker compose pull && up -d` - no source checkout on the host.
+#
+# The sandbox image (sandbox/Dockerfile) is deliberately NOT built here.
+# It carries the Claude Code and Codex CLIs and ~26 native tree-sitter
+# wheels, takes far longer than the rest put together, and changes on its
+# own schedule. Build and push it by hand when it changes; see
+# docs/DEPLOY.md.
+
+on:
+  push:
+    branches:
+      - main
+    tags:
+      - "v*"
+  workflow_dispatch:
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    permissions:
+      contents: read
+      packages: write
+
+    strategy:
+      # One red image should not cancel the others - knowing whether the
+      # failure is specific to one app or common to all three is most of
+      # the diagnosis.
+      fail-fast: false
+      matrix:
+        app: [server, worker, web]
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY }}/${{ github.repository }}-${{ matrix.app }}
+          tags: |
+            type=ref,event=branch
+            type=ref,event=tag
+            type=sha,format=long
+            type=raw,value=latest,enable=${{ startsWith(github.ref, 'refs/tags/v') }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          # The repo root, not the app directory: this is a pnpm workspace
+          # and the build needs the root lockfile, pnpm-workspace.yaml and
+          # every workspace package. Each Dockerfile says the same.
+          context: .
+          file: apps/${{ matrix.app }}/Dockerfile
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          cache-from: type=gha,scope=${{ matrix.app }}
+          cache-to: type=gha,mode=max,scope=${{ matrix.app }}

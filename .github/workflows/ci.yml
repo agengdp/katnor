@@ -3,10 +3,10 @@ name: CI
 on:
   push:
     branches:
-      - '**'
+      - "**"
   pull_request:
     branches:
-      - '**'
+      - "**"
 
 jobs:
   ci:
@@ -141,3 +141,100 @@ jobs:
           name: drizzle-migrations
           path: packages/db/drizzle
           if-no-files-found: warn
+
+  # Builds the server image and runs the deploy-time migration inside it,
+  # against a real Postgres.
+  #
+  # The `db` job above proves the migration chain works when run from a
+  # checkout with pnpm and the full dev toolchain. A deployment has none of
+  # that: docker-compose.prod.yml's `migrate` service runs `npx tsx` inside
+  # the built image, which carries only runtime dependencies and whatever
+  # `COPY --from=builder /repo/packages` happened to bring along. Those are
+  # different enough that "works in the db job" says very little about
+  # "works on a deploy", and every bug found in this area got in exactly
+  # that way - by testing one path and shipping another.
+  #
+  # So this runs the literal command from the compose file.
+  image:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: katnor
+          POSTGRES_PASSWORD: katnor
+          POSTGRES_DB: katnor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U katnor -d katnor"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Loaded into the local daemon rather than pushed - nothing is
+      # published from a branch build.
+      - name: Build the server image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: apps/server/Dockerfile
+          load: true
+          tags: katnor-server:ci
+          cache-from: type=gha,scope=server
+          cache-to: type=gha,mode=max,scope=server
+
+      # Byte-for-byte the `migrate` service's working_dir and command in
+      # docker-compose.prod.yml. If that command cannot resolve tsx, or the
+      # image is missing packages/db/drizzle, this is where it shows -
+      # rather than on someone's server.
+      - name: Run the deploy migration inside the image
+        run: |
+          docker run --rm \
+            --network host \
+            -e DATABASE_URL=postgresql://katnor:katnor@localhost:5432/katnor \
+            -w /repo/packages/db \
+            katnor-server:ci \
+            sh -c "npx tsx src/applyPreMigrate.ts && npx tsx src/migrate.ts && npx tsx src/applyPostMigrate.ts"
+
+      # A second run must be a clean no-op: `docker compose up -d` runs the
+      # migrate service on every deploy, so anything non-idempotent here
+      # breaks the second deploy rather than the first.
+      - name: Run it again to prove it is idempotent
+        run: |
+          docker run --rm \
+            --network host \
+            -e DATABASE_URL=postgresql://katnor:katnor@localhost:5432/katnor \
+            -w /repo/packages/db \
+            katnor-server:ci \
+            sh -c "npx tsx src/applyPreMigrate.ts && npx tsx src/migrate.ts && npx tsx src/applyPostMigrate.ts"
+
+      - name: Verify the bootstrap against the migrated database
+        run: |
+          docker run --rm \
+            --network host \
+            -e DATABASE_URL=postgresql://katnor:katnor@localhost:5432/katnor \
+            -w /repo/packages/db \
+            katnor-server:ci \
+            npx tsx src/verifyBootstrap.ts
+
+      # Catches interpolation and schema mistakes in the compose file
+      # itself - a YAML alias used inside a string, a required variable
+      # with no default, a service referencing a volume that is not
+      # declared.
+      - name: Validate docker-compose.prod.yml
+        env:
+          POSTGRES_PASSWORD: ci-placeholder
+          DATABASE_URL: postgresql://katnor:ci-placeholder@postgres:5432/katnor
+          SESSION_SECRET: ci-placeholder
+          SETTINGS_ENCRYPTION_KEY: ci-placeholder
+          PUBLIC_SERVER_URL: http://localhost:3001
+        run: docker compose -f docker-compose.prod.yml config --quiet

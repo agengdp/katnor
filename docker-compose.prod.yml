@@ -1,0 +1,154 @@
+# Production deployment. For local development use docker-compose.yml
+# instead - that one builds from source and publishes ports for
+# convenience; this one pulls published images and does not.
+#
+#   docker compose -f docker-compose.prod.yml up -d
+#
+# See docs/DEPLOY.md for the full procedure. The differences from the dev
+# compose file are all deliberate:
+#
+#   - Images come from a registry rather than a build context, so a host
+#     needs neither the source tree nor a build toolchain.
+#   - Postgres publishes no port. The dev file maps 5432 to the host for
+#     psql access; on a public box that is a database open to the internet.
+#   - MinIO is gone. Artifacts are stored on a volume and served through
+#     apps/server's `/artifacts/raw/:key`, which is behind `requireAuth`.
+#     In S3 mode the browser fetches presigned URLs directly, which means
+#     exposing MinIO publicly and handing out time-limited unauthenticated
+#     links to agent output. See docs/DEPLOY.md if you want S3/MinIO back.
+#   - A one-shot `migrate` service brings the schema up before the server
+#     or worker start, so a deploy cannot race an unmigrated database.
+#   - Secrets have no defaults. `${VAR:?...}` makes compose refuse to start
+#     rather than silently booting with a well-known development password.
+
+name: katnor
+
+services:
+  postgres:
+    image: pgvector/pgvector:pg16
+    restart: unless-stopped
+    environment:
+      POSTGRES_DB: ${POSTGRES_DB:-katnor}
+      POSTGRES_USER: ${POSTGRES_USER:-katnor}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:?POSTGRES_PASSWORD is required}
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    # No `ports:`. The other services reach it over the compose network.
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-katnor} -d ${POSTGRES_DB:-katnor}"]
+      interval: 5s
+      timeout: 5s
+      retries: 20
+    networks:
+      - katnor
+
+  # Runs once per `up` and exits. server and worker wait for it to exit 0.
+  #
+  # The three steps have to be separate and in this order: pre-migrate
+  # installs pgvector (the tables declare vector(1536) columns, which
+  # Postgres cannot parse without it), migrate applies the committed SQL,
+  # post-migrate installs the event-notify trigger on a table that must
+  # already exist. All three are idempotent, so a redeploy is a no-op.
+  #
+  # `src/migrate.ts` is drizzle-orm's migrator, not the drizzle-kit CLI -
+  # this image has no build toolchain, only the runtime dependencies.
+  migrate:
+    image: ${KATNOR_IMAGE_PREFIX:-ghcr.io/agengdp/katnor}-server:${KATNOR_VERSION:-latest}
+    restart: "no"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    environment:
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - it must point at the postgres service, e.g. postgresql://katnor:PASSWORD@postgres:5432/katnor}
+    working_dir: /repo/packages/db
+    command:
+      - sh
+      - -c
+      - npx tsx src/applyPreMigrate.ts && npx tsx src/migrate.ts && npx tsx src/applyPostMigrate.ts
+    networks:
+      - katnor
+
+  server:
+    image: ${KATNOR_IMAGE_PREFIX:-ghcr.io/agengdp/katnor}-server:${KATNOR_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - it must point at the postgres service, e.g. postgresql://katnor:PASSWORD@postgres:5432/katnor}
+      SERVER_PORT: ${SERVER_PORT:-3001}
+      SESSION_SECRET: ${SESSION_SECRET:?SESSION_SECRET is required - generate with `openssl rand -hex 32`}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?SETTINGS_ENCRYPTION_KEY is required - generate with `openssl rand -hex 32`}
+      ARTIFACT_STORAGE: local
+      ARTIFACT_STORAGE_DIR: /data/artifacts
+      WIKI_STORAGE_DIR: /data/wiki
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
+    volumes:
+      - wiki-data:/data/wiki
+      - artifact-data:/data/artifacts
+    ports:
+      - "${SERVER_PORT:-3001}:${SERVER_PORT:-3001}"
+    networks:
+      - katnor
+
+  worker:
+    image: ${KATNOR_IMAGE_PREFIX:-ghcr.io/agengdp/katnor}-worker:${KATNOR_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+      migrate:
+        condition: service_completed_successfully
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: ${DATABASE_URL:?DATABASE_URL is required - it must point at the postgres service, e.g. postgresql://katnor:PASSWORD@postgres:5432/katnor}
+      SETTINGS_ENCRYPTION_KEY: ${SETTINGS_ENCRYPTION_KEY:?SETTINGS_ENCRYPTION_KEY is required}
+      ARTIFACT_STORAGE: local
+      ARTIFACT_STORAGE_DIR: /data/artifacts
+      WIKI_STORAGE_DIR: /data/wiki
+      EMBEDDINGS_API_KEY: ${EMBEDDINGS_API_KEY:-}
+      SANDBOX_MODE: ${SANDBOX_MODE:-docker}
+      SANDBOX_IMAGE: ${SANDBOX_IMAGE:-ghcr.io/agengdp/katnor-sandbox:latest}
+      WORKSPACE_HOST_DIR: ${WORKSPACE_HOST_DIR:-/tmp/katnor-workspaces}
+    volumes:
+      # Same trade as the dev compose file: the worker orchestrates sibling
+      # workspace containers through the host daemon, which is
+      # root-equivalent control of that daemon. Set SANDBOX_MODE=host to opt
+      # out, at the cost of losing isolation for the shell/claude_code tools.
+      - /var/run/docker.sock:/var/run/docker.sock
+      - wiki-data:/data/wiki
+      - artifact-data:/data/artifacts
+    networks:
+      - katnor
+
+  web:
+    image: ${KATNOR_IMAGE_PREFIX:-ghcr.io/agengdp/katnor}-web:${KATNOR_VERSION:-latest}
+    restart: unless-stopped
+    depends_on:
+      - server
+    environment:
+      NODE_ENV: production
+      # The browser resolves this, not the container, so it must be the
+      # URL a user's browser can reach - not `http://server:3001`. It also
+      # has to share a registrable domain with the web app, or the session
+      # cookie will not be sent on the /ws/events WebSocket handshake and
+      # live updates will silently stop (SameSite=Lax; see
+      # apps/web/src/lib/eventsSocket.ts).
+      PUBLIC_SERVER_URL: ${PUBLIC_SERVER_URL:?PUBLIC_SERVER_URL is required - the URL browsers reach apps/server on}
+      PORT: ${WEB_PORT:-3000}
+    ports:
+      - "${WEB_PORT:-3000}:${WEB_PORT:-3000}"
+    networks:
+      - katnor
+
+volumes:
+  postgres-data:
+  wiki-data:
+  artifact-data:
+
+networks:
+  katnor:
+    driver: bridge

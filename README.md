@@ -42,7 +42,13 @@ The full build plan is in [PLAN.md](./PLAN.md).
    knowledge graph and wiki (`search_knowledge`/`ask_wiki`/the Knowledge page's Ask tab). Without
    it, those fall back to plain keyword matching rather than failing.
 
-### First-run setup
+### Deploying
+
+`docker-compose.prod.yml` plus [docs/DEPLOY.md](docs/DEPLOY.md): published images, no source
+checkout on the host, schema brought up by a one-shot `migrate` service before the app starts.
+The quick-start above is for development — it builds from source and publishes the Postgres port.
+
+## First-run setup
 
 The first user account is the one thing that cannot be created from the dashboard, because the
 dashboard requires being logged in. There are two ways to create it, and they do exactly the same
