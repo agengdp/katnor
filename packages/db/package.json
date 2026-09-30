@@ -10,7 +10,8 @@
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
     "db:post-migrate": "tsx src/applyPostMigrate.ts",
-    "db:seed": "tsx src/seed.ts"
+    "db:seed": "tsx src/seed.ts",
+    "db:verify": "tsx src/verifyBootstrap.ts"
   },
   "dependencies": {
     "@katnor/core": "workspace:*",

@@ -44,3 +44,82 @@ jobs:
 
       - name: Test
         run: pnpm test
+
+  # A real Postgres, because the first-run bootstrap cannot be checked
+  # without one. `createFirstUser` is the security boundary of the browser
+  # setup wizard and leans on `pg_advisory_xact_lock` inside a drizzle
+  # transaction; no mock can tell you whether that lock actually
+  # serialises anything. This job is also the only place the migration
+  # chain (generate -> migrate -> post-migrate) is ever executed.
+  #
+  # Separate from the `ci` job above rather than bolted onto it: that job
+  # needs no services and should stay fast, and a red build here means
+  # something quite different from a failing typecheck.
+  db:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # The same image docker-compose.yml uses - plain `postgres:16`
+        # would pass the migrations and then fail db:post-migrate on
+        # `CREATE EXTENSION vector`, which is exactly the kind of drift
+        # between CI and the real stack worth not having.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: katnor
+          POSTGRES_PASSWORD: katnor
+          POSTGRES_DB: katnor
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://katnor:katnor@localhost:5432/katnor
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install dependencies
+        run: pnpm install
+
+      # No migration SQL is committed yet, so this generates it from the
+      # drizzle schema on every run. That makes the job prove the schema
+      # still produces a clean migration, but it does NOT prove the
+      # committed migrations match - there are none to match. Committing
+      # the output of this step and switching to a drift check is the
+      # follow-up; see docs/DEPLOY.md.
+      - name: Generate migrations
+        run: pnpm --filter @katnor/db db:generate
+
+      - name: Migrate
+        run: pnpm --filter @katnor/db db:migrate
+
+      - name: Post-migrate (pgvector + event trigger)
+        run: pnpm --filter @katnor/db db:post-migrate
+
+      - name: Verify first-run bootstrap
+        run: pnpm --filter @katnor/db db:verify
+
+      # Kept so a failed deploy can be reproduced from the exact SQL this
+      # run applied, and so the files can be committed without needing a
+      # machine that can reach the npm registry.
+      - name: Upload generated migrations
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: drizzle-migrations
+          path: packages/db/drizzle
+          if-no-files-found: warn
