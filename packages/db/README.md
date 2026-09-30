@@ -31,26 +31,27 @@ read by `db:seed`, and only to create the very first `user` row if no user exist
 in until one does (Phase 5's multi-user auth has no self-serve signup; every other user is created by
 an already-logged-in one through Settings > Team members).
 
-### The `./drizzle/` directory is not committed yet
+### About `./drizzle/`
 
-The schema in `src/schema/` was written by hand and `pnpm db:generate` has not been committed from,
-so `./drizzle/` (the SQL migrations plus drizzle-kit's `meta/` snapshot) does not exist in the repo.
+The SQL migrations and drizzle-kit's `meta/` snapshot are committed. They have to be: a deployed
+stack applies the committed SQL through `src/migrate.ts` inside the server image, which carries no
+drizzle-kit to generate anything with. CI regenerates from `src/schema` on every run and fails if
+the result differs, so committed-but-stale migrations cannot slip through.
 
-An earlier version of this note blamed the sandbox's lack of registry access. That was wrong, and
-worth recording because the real reason was a bug nobody had hit: `db:generate` did not work at
-all. `drizzle.config.ts` imported `./src/env.js`, and the schema barrel re-exports `./columns.js`
-and friends - the `.js` extensions NodeNext requires - while drizzle-kit loads both through a
-CommonJS `require` that resolves those literally, against files that do not exist. It failed with
-`MODULE_NOT_FOUND` on any machine, and on the schema it failed while still exiting 0, so the
-migration came out empty and `db:migrate` cheerfully reported success over it.
+Getting here took fixing three bugs that had each gone unnoticed because the one upstream of it
+also failed, and they are worth recording so nobody re-introduces them:
 
-Both are fixed (the config is standalone; `db:generate` runs under the tsx loader), and CI's `db`
-job now runs the whole chain against a real pgvector Postgres and fails if the generated migration
-does not contain the tables it should.
-
-To commit the migrations: run `pnpm db:generate`, review the SQL, and commit `./drizzle/`. The CI
-job also uploads exactly what it generated as a `drizzle-migrations` artifact, which is the way to
-get them from a machine that cannot reach the npm registry.
+1. `drizzle.config.ts` imported `./src/env.js`. drizzle-kit loads the config through a CommonJS
+   `require`, which resolves that literally, against a file that does not exist - this package is
+   ESM with `moduleResolution: NodeNext`, so its source spells imports with `.js` extensions that
+   only TypeScript resolves back to `.ts`. `db:generate` had never run, on any machine.
+2. The same thing one level down, on the schema barrel's `export * from './columns.js'`. Worse,
+   drizzle-kit printed `MODULE_NOT_FOUND` and **exited 0**, so an empty migration went out looking
+   like a success and `db:migrate` reported "migrations applied successfully" over it. The fix is
+   running `db:generate` under the tsx loader.
+3. `CREATE EXTENSION vector` ran in `db:post-migrate`, i.e. after the migrations - but the tables
+   declare `vector(1536)` columns, which Postgres cannot parse without it. The documented order
+   could never complete on an empty database. It is now `db:pre-migrate`.
 
 ## What's in here
 

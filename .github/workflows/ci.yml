@@ -95,56 +95,35 @@ jobs:
       - name: Install dependencies
         run: pnpm install
 
-      # No migration SQL is committed yet, so this generates it from the
-      # drizzle schema on every run. That makes the job prove the schema
-      # still produces a clean migration, but it does NOT prove the
-      # committed migrations match - there are none to match. Committing
-      # the output of this step and switching to a drift check is the
-      # follow-up; see docs/DEPLOY.md.
-      - name: Generate migrations
-        run: pnpm --filter @katnor/db db:generate
-
-      # drizzle-kit printed MODULE_NOT_FOUND for the schema barrel and still
-      # exited 0, so the step above went green while emitting a migration
-      # with no tables in it. `db:migrate` then reported "migrations applied
-      # successfully" for that empty file, and the first honest failure came
-      # two steps later, in post-migrate, as `relation "event" does not
-      # exist`. A generator that silently produces nothing is the failure
-      # mode worth guarding, not the one worth trusting.
-      - name: Check the generated migration is not empty
+      # Regenerates from the schema and fails if the result differs from
+      # what is committed. Deployed images apply the committed SQL and
+      # cannot generate it, so committed-but-stale migrations mean a deploy
+      # that silently brings up the wrong schema. This is the check that
+      # makes the committed files trustworthy.
+      - name: Check committed migrations match the schema
         run: |
           set -euo pipefail
-          dir=packages/db/drizzle
-          if ! ls "$dir"/*.sql >/dev/null 2>&1; then
-            echo "::error::db:generate produced no .sql files in $dir"
-            ls -la "$dir" || true
+          pnpm --filter @katnor/db db:generate
+          if ! git diff --quiet -- packages/db/drizzle; then
+            echo "::error::packages/db/drizzle is out of date - run 'pnpm --filter @katnor/db db:generate' and commit the result"
+            git diff --stat -- packages/db/drizzle
+            git diff -- packages/db/drizzle
             exit 1
           fi
-          tables=$(cat "$dir"/*.sql | grep -c 'CREATE TABLE' || true)
-          echo "generated $tables CREATE TABLE statement(s)"
-          # 19 tables in packages/db/src/schema today. Asserting a floor
-          # rather than the exact count so adding a table does not fail CI,
-          # while an empty or near-empty generate still does.
-          if [ "$tables" -lt 15 ]; then
-            echo "::error::only $tables CREATE TABLE statements generated - the schema did not load"
-            cat "$dir"/*.sql
-            exit 1
-          fi
-          for table in event "user" company agent run kg_node; do
-            if ! grep -qi "CREATE TABLE \"$table\"" "$dir"/*.sql; then
-              echo "::error::no CREATE TABLE for \"$table\" in the generated migration"
-              exit 1
-            fi
-          done
+          echo "committed migrations match src/schema"
 
-      # Before migrate, not after: the generated tables have vector(1536)
-      # columns and Postgres cannot parse that type until the extension
-      # exists.
+      # Before migrate, not after: the tables have vector(1536) columns and
+      # Postgres cannot parse that type until the extension exists.
       - name: Pre-migrate (pgvector extension)
         run: pnpm --filter @katnor/db db:pre-migrate
 
-      - name: Migrate
-        run: pnpm --filter @katnor/db db:migrate
+      # `db:migrate:apply`, not `db:migrate`: this is drizzle-orm's own
+      # migrator, which is the code path a deployed stack actually runs
+      # (there is no drizzle-kit in the server image). Testing the dev CLI
+      # here and shipping the other one would leave the deploy path
+      # unexercised.
+      - name: Migrate (the same path deployments use)
+        run: pnpm --filter @katnor/db db:migrate:apply
 
       - name: Post-migrate (event notify trigger)
         run: pnpm --filter @katnor/db db:post-migrate
@@ -152,11 +131,11 @@ jobs:
       - name: Verify first-run bootstrap
         run: pnpm --filter @katnor/db db:verify
 
-      # Kept so a failed deploy can be reproduced from the exact SQL this
-      # run applied, and so the files can be committed without needing a
-      # machine that can reach the npm registry.
-      - name: Upload generated migrations
-        if: always()
+      # Only on failure, and only to show what the drift check saw - the
+      # migrations are committed now, so there is nothing to collect from a
+      # green run.
+      - name: Upload migrations on failure
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: drizzle-migrations
