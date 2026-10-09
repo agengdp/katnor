@@ -190,7 +190,7 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
   {
     name: 'create_project',
     description:
-      'Create a new project - a board, a channel, and a wiki. Do this before delegating any tasks.',
+      'Create a new project - a board, a channel, and a wiki. Do this before delegating any tasks. Reuse an existing project when one already covers the work instead of creating a same-named duplicate.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -204,6 +204,12 @@ export const companyTools: ToolDefinition<AgentToolContext>[] = [
       const name = str(input, 'name');
       if (!name) {
         return { content: 'create_project requires name.', isError: true };
+      }
+      const existing = await projectRepo.getByName(name);
+      if (existing) {
+        return {
+          content: `Project "${existing.name}" already exists (${existing.id}) — reused it instead of creating a duplicate.`,
+        };
       }
       const created = await projectRepo.create({
         name,

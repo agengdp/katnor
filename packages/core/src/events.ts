@@ -46,6 +46,18 @@ const teamCreatedEvent = z.object({
   name: z.string(),
 });
 
+const teamDeletedEvent = z.object({
+  type: z.literal('team.deleted'),
+  team_id: z.string(),
+  name: z.string(),
+});
+
+const projectDeletedEvent = z.object({
+  type: z.literal('project.deleted'),
+  project_id: z.string(),
+  name: z.string(),
+});
+
 const taskCreatedEvent = z.object({
   type: z.literal('task.created'),
   task_id: z.string(),
@@ -149,6 +161,8 @@ export const eventPayloadSchema = z.discriminatedUnion('type', [
   agentFiredEvent,
   projectCreatedEvent,
   teamCreatedEvent,
+  teamDeletedEvent,
+  projectDeletedEvent,
   taskCreatedEvent,
   taskUpdatedEvent,
   messagePostedEvent,
@@ -171,6 +185,8 @@ export const EVENT_TYPES = [
   'agent.fired',
   'project.created',
   'team.created',
+  'team.deleted',
+  'project.deleted',
   'task.created',
   'task.updated',
   'message.posted',

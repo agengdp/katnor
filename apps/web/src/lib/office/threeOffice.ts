@@ -13,10 +13,12 @@ import type { BatuWeatherKind } from './batuWeather';
  * floating sky panels, no wall windows).
  *
  * Placement rules — CEO in the CEO room, talking staff at the meeting
- * table, waiting staff queued at the meeting door, everyone else at a
- * home seat (staff desks first, then free meeting chairs so every room
- * stays populated and nobody stacks), one idle agent drifts to the
- * pantry.
+ * table, waiting staff queued at the meeting door, everyone else split
+ * across all four floors (workspace desks, kitchen tables, rooftop
+ * loungers, parking lane) so every level stays alive and nobody stacks.
+ * One idle agent drifts to the pantry; every 45s another roams to a
+ * different floor for a visit. Floor changes always route through the
+ * lift: walk to the lift lobby, ride the cabin, walk out to the slot.
  */
 
 export interface RoomAgent {
@@ -64,6 +66,8 @@ export interface OfficeScene {
   /** Dolly the viewpoint in (>1) or out (<1), clamped to orbit limits. */
   dolly: (factor: number) => void;
   setSelected: (agentId: string | null) => void;
+  /** Manual order: walk this agent to another floor via the lift. */
+  sendToFloor: (agentId: string, floor: FloorId) => void;
   dispose: () => void;
 }
 
@@ -75,9 +79,10 @@ const ROOM_D = 17;
 const WALL_H = 7.5;
 const FLOOR_GAP = WALL_H + 4.2;
 
-type SlotKind = 'desk' | 'meeting' | 'queue' | 'reception' | 'water';
+type SlotKind = 'desk' | 'meeting' | 'queue' | 'reception' | 'water' | 'dine' | 'lounge' | 'deck' | 'park' | 'lift';
 
 interface Slot {
+  floor: FloorId;
   x: number;
   z: number;
   yaw: number;
@@ -223,6 +228,13 @@ interface AgentNode {
   rig: THREE.Group;
   bodyMat: THREE.MeshStandardMaterial;
   headMat: THREE.MeshStandardMaterial;
+  pantsMat: THREE.MeshStandardMaterial;
+  hipL: THREE.Group;
+  hipR: THREE.Group;
+  kneeL: THREE.Group;
+  kneeR: THREE.Group;
+  armL: THREE.Group;
+  armR: THREE.Group;
   ringMat: THREE.MeshBasicMaterial;
   selRing: THREE.Mesh;
   label: THREE.Sprite;
@@ -234,6 +246,18 @@ interface AgentNode {
   target: THREE.Vector3;
   desiredYaw: number;
   phase: number;
+  /** Chair slot (desk/meeting) wants a seated pose. */
+  sitting: boolean;
+  /** Eased 0 (stand) → 1 (sit); forced to 0 while walking. */
+  sitBlend: number;
+  /** Floor group this agent currently parents to. */
+  floor: FloorId;
+  /** Lift journey phase: at-slot, walking to lift, riding, walking out. */
+  leg: 'slot' | 'toLift' | 'inLift' | 'toSlot';
+  /** Destination slot once the current lift journey completes. */
+  pending: Slot | null;
+  /** Elapsed seconds when the agent stepped out of the cabin. */
+  alightT: number;
 }
 
 export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): OfficeScene {
@@ -395,37 +419,130 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
   const spineExtras: THREE.Object3D[] = [];
   const cityExtras: THREE.Object3D[] = [];
 
-  // Shared building spine: elevator shaft + one door per floor. The
-  // shaft only makes sense in the stacked view, but each door belongs
-  // to its own floor so focused floors keep their lift entrance.
+  // Shared building spine: open-front elevator shaft (hollow, so the
+  // cabin reads inside) + one sliding door pair per floor. Each pair
+  // belongs to its own floor so focused floors keep their lift entrance.
+  // The lift lobby (inside every floor, in front of its doors) is the
+  // single choke point for floor changes: agents walk here, board the
+  // one cabin, ride it, and walk out to their slot.
+  const LIFT_LOBBY = { x: ROOM_W / 2 - 1.4, z: ROOM_D / 2 - 3.4 };
+  const LIFT_SHAFT = { x: ROOM_W / 2 + 1.4, z: ROOM_D / 2 - 3.4 };
+  const CABIN_HALF = 0.85;
+  const doorLeaves: Record<FloorId, { left: THREE.Mesh; right: THREE.Mesh }> = {} as Record<
+    FloorId,
+    { left: THREE.Mesh; right: THREE.Mesh }
+  >;
   {
-    const shaft = new THREE.Mesh(
-      new THREE.BoxGeometry(2.2, FLOOR_GAP * 3 + WALL_H, ROOM_D * 0.42),
-      std('#2c2838'),
+    // Hollow open-front shaft (frame, not a solid box) so the glass
+    // cabin reads inside from the orbit camera. Two side walls + lintel
+    // strips per level; open toward the rooms (west face) and the front.
+    const shaftMat = std('#2c2838');
+    const shaftParts: THREE.Object3D[] = [];
+    const WALL_T = 0.3;
+    for (let i = 0; i < 4; i++) {
+      const y0 = floorY(i);
+      for (const gz of [-1, 1] as const) {
+        const side = new THREE.Mesh(
+          new THREE.BoxGeometry(2.2, FLOOR_GAP, WALL_T),
+          shaftMat,
+        );
+        const gzAbs = LIFT_SHAFT.z + gz * (CABIN_HALF + 0.35);
+        side.position.set(LIFT_SHAFT.x, y0 + FLOOR_GAP / 2, gzAbs);
+        side.castShadow = true;
+        side.receiveShadow = true;
+        scene.add(side);
+        shaftParts.push(side);
+      }
+      const backWallMesh = new THREE.Mesh(
+        new THREE.BoxGeometry(WALL_T, FLOOR_GAP, ROOM_D * 0.42),
+        shaftMat,
+      );
+      backWallMesh.position.set(LIFT_SHAFT.x + CABIN_HALF + 0.5, y0 + FLOOR_GAP / 2, LIFT_SHAFT.z);
+      backWallMesh.castShadow = true;
+      backWallMesh.receiveShadow = true;
+      scene.add(backWallMesh);
+      shaftParts.push(backWallMesh);
+    }
+    const cap = new THREE.Mesh(
+      new THREE.BoxGeometry(2.6, 0.5, ROOM_D * 0.42 + 0.6),
+      shaftMat,
     );
-    shaft.position.set(ROOM_W / 2 + 1.4, (FLOOR_GAP * 3) / 2, ROOM_D / 2 - 3.4);
-    shaft.castShadow = true;
-    shaft.receiveShadow = true;
-    scene.add(shaft);
-    spineExtras.push(shaft);
-    const doorMat = new THREE.MeshStandardMaterial({
-      color: '#0b1220',
+    cap.position.set(LIFT_SHAFT.x, floorY(3) + FLOOR_GAP / 2 + 1.2, LIFT_SHAFT.z);
+    scene.add(cap);
+    shaftParts.push(cap);
+    for (const p of shaftParts) spineExtras.push(p);
+    const leafMat = new THREE.MeshStandardMaterial({
+      color: '#9fb4c8',
       emissive: '#22d3ee',
-      emissiveIntensity: 0.4,
-      roughness: 0.4,
+      emissiveIntensity: 0.15,
+      roughness: 0.35,
+      metalness: 0.55,
     });
     const floorIds: FloorId[] = ['parking', 'kitchen', 'workspace', 'rooftop'];
     for (let i = 0; i < 4; i++) {
-      const door = new THREE.Mesh(new THREE.PlaneGeometry(1.2, 2.1), doorMat);
-      door.position.set(ROOM_W / 2 + 0.29, floorY(i) + 1.15, ROOM_D / 2 - 3.4);
-      door.rotation.y = -Math.PI / 2;
-      addTo(floorIds[i], door);
+      // Two sliding leaves with a glowing center seam; each pair parents
+      // to its floor group (local Y) so the entrance survives isolation.
+      const left = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.1, 0.62), leafMat);
+      const right = new THREE.Mesh(new THREE.BoxGeometry(0.08, 2.1, 0.62), leafMat);
+      left.position.set(ROOM_W / 2 + 0.29, 1.15, ROOM_D / 2 - 3.4 - 0.31);
+      right.position.set(ROOM_W / 2 + 0.29, 1.15, ROOM_D / 2 - 3.4 + 0.31);
+      addTo(floorIds[i], left);
+      addTo(floorIds[i], right);
+      doorLeaves[floorIds[i]] = { left, right };
     }
     const label = makeTextSprite('🛗 Lift', 30, 'rgba(10,10,15,0.78)', '#a5f3fc');
     label.position.set(ROOM_W / 2 + 1.4, FLOOR_GAP * 3 + 2.2, ROOM_D / 2 - 3.4);
     scene.add(label);
     spineExtras.push(label);
   }
+
+  // ─── Lift cabin (one car, world space) ───────────────────────────────
+  // Glass-sided box riding the shaft; boarding agents reparent into it
+  // so the whole stack sees them travel. Doors part while it dwells.
+  const cabin = new THREE.Group();
+  {
+    const frame = std('#334155', 0.6);
+    const floorPan = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 1.7), frame);
+    floorPan.position.y = 0.06;
+    cabin.add(floorPan);
+    const roofPan = new THREE.Mesh(new THREE.BoxGeometry(1.7, 0.12, 1.7), frame);
+    roofPan.position.y = 2.3;
+    cabin.add(roofPan);
+    const back = new THREE.Mesh(new THREE.BoxGeometry(0.1, 2.3, 1.7), frame);
+    back.position.set(CABIN_HALF, 1.2, 0);
+    cabin.add(back);
+    const glassMat = new THREE.MeshStandardMaterial({
+      color: '#a5c4d8',
+      transparent: true,
+      opacity: 0.3,
+      roughness: 0.15,
+      side: THREE.DoubleSide,
+    });
+    for (const gz of [-CABIN_HALF, CABIN_HALF] as const) {
+      const pane = new THREE.Mesh(new THREE.PlaneGeometry(1.7, 2.2), glassMat);
+      pane.position.set(0, 1.2, gz);
+      cabin.add(pane);
+    }
+    const lampMat = new THREE.MeshBasicMaterial({ color: '#fef9c3', fog: false });
+    const lamp = new THREE.Mesh(new THREE.BoxGeometry(1.1, 0.06, 0.5), lampMat);
+    lamp.position.y = 2.22;
+    cabin.add(lamp);
+    cabin.position.set(LIFT_SHAFT.x, 0, LIFT_SHAFT.z);
+    scene.add(cabin);
+  }
+  // Cabin trip state: exactly one boarding/alighting event owns the car.
+  interface LiftTrip {
+    node: AgentNode;
+    from: FloorId;
+    to: FloorId;
+    phase: 'toPickup' | 'boarding' | 'riding' | 'alighting';
+    timer: number;
+  }
+  let liftTrip: LiftTrip | null = null;
+  const liftQueue: AgentNode[] = [];
+  /** 0 shut … 1 fully parted, per floor (eased in tick). */
+  const doorOpen: Record<FloorId, number> = { parking: 0, kitchen: 0, workspace: 0, rooftop: 0 };
+  const doorTarget: Record<FloorId, number> = { parking: 0, kitchen: 0, workspace: 0, rooftop: 0 };
 
   // ─── Floor 0 · Parking ─────────────────────────────────────────────
   floorPlate('parking', '#3f434c');
@@ -1029,14 +1146,36 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
   // meeting door, everyone else at a staff-room desk. Slot lists have
   // spares plus computed overflow so a big roster never stacks two
   // characters on the same spot.
+  // Explicit owner orders (side-panel "Kirim ke lantai"): beat roam
+  // and home seats, but never interrupt talking/waiting work. Sending
+  // back to workspace clears the order (normal desk life resumes).
+  const manualFloor = new Map<string, FloorId>();
   const agents = new Map<string, AgentNode>();
   const hitMeshes: THREE.Mesh[] = [];
   let roster: RoomAgent[] = [];
+  const roamFloor = new Map<string, FloorId>();
   let waterBreakerId: string | null = null;
   let selectedId: string | null = null;
+  // Shared sim clock (seconds): the water/cooler + roam timers below and
+  // the lift machine both read it, so it lives beside the agent system.
+  let elapsed = 0;
   const waterTimer = window.setInterval(() => {
     waterBreakerId = null;
     pickWaterBreaker();
+    retarget();
+  }, 45_000);
+  // Every 45s (offset from the pantry timer) one seated desk worker
+  // roams to another floor for a visit. Roam assignments persist in
+  // roamFloor until the roster recalls them, so the trip always goes
+  // through the lift via retarget → startLiftTrip.
+  const roamTimer = window.setInterval(() => {
+    const sitters = roster.filter(
+      (a) => !a.is_system && a.status === 'active' && a.state !== 'talking' && a.state !== 'waiting_human' && !roamFloor.has(a.id),
+    );
+    if (sitters.length <= 4) return; // keep the workspace populated
+    const pick = sitters[Math.floor(Math.random() * sitters.length)];
+    const order: FloorId[] = ['kitchen', 'rooftop', 'parking'];
+    roamFloor.set(pick.id, order[Math.floor(Math.random() * order.length)]);
     retarget();
   }, 45_000);
 
@@ -1051,14 +1190,29 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
   }
 
   function slotFor(agent: RoomAgent, ctx: Ctx): Slot {
+    // Owner's manual order wins over roam/home/pantry — but busy
+    // agents (talking, waiting) finish work first. The CEO rides along
+    // too: an ordered CEO takes a visiting chair, an unordered one holds
+    // the executive desk.
+    const manual = manualFloor.get(agent.id);
+    if (manual && manual !== 'workspace' && agent.state !== 'talking' && agent.state !== 'waiting_human') {
+      const s = roamSlotFor(agent, manual, claimChair(ctx, manual));
+      if (s) return s;
+    }
     // CEO holds the executive desk in the CEO room (left wing),
     // standing behind the high-back chair, facing the desk.
     if (agent.is_system) {
-      return { x: -8.6, z: 2.9, yaw: Math.PI, kind: 'reception' };
+      return { floor: 'workspace', x: -8.6, z: 2.9, yaw: Math.PI, kind: 'reception' };
     }
     if (agent.id === waterBreakerId && agent.state === 'idle') {
       const p = toWorld(WATER_SPOT.x, WATER_SPOT.y);
-      return { ...p, yaw: Math.PI / 2, kind: 'water' };
+      return { floor: 'workspace', ...p, yaw: Math.PI / 2, kind: 'water' };
+    }
+    // Roamers (see roamTimer) live on another floor until recalled.
+    const roam = ctx.roamFloor.get(agent.id);
+    if (roam && agent.state !== 'talking' && agent.state !== 'waiting_human') {
+      const s = roamSlotFor(agent, roam, claimChair(ctx, roam));
+      if (s) return s;
     }
     if (ctx.talking.has(agent.id)) {
       // Talking staff gather around the meeting-room table (right wing),
@@ -1068,6 +1222,7 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
       const p = MEETING_SEATS[i % MEETING_SEATS.length];
       const cycle = Math.floor(i / MEETING_SEATS.length);
       return {
+        floor: 'workspace',
         x: p.x + cycle * 0.8,
         z: p.z + cycle * 0.3,
         yaw: meetYaw(p),
@@ -1086,15 +1241,62 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
       const i = ctx.waitingList.findIndex((a) => a.id === agent.id);
       const p = spots[i % spots.length];
       const cycle = Math.floor(i / spots.length);
-      return { x: p.x - cycle * 0.9, z: p.z, yaw: Math.PI / 2, kind: 'queue' };
+      return { floor: 'workspace', x: p.x - cycle * 0.9, z: p.z, yaw: Math.PI / 2, kind: 'queue' };
     }
-    // Everyone else sits at their home seat: staff desks first, then
-    // free meeting chairs, so every room stays populated and nobody
-    // shares a chair. Assigned in buildCtx (stable per roster order).
+    // Everyone else sits at their home seat. Desks fill first; overflow
+    // spills across the other floors (dining tables, rooftop loungers,
+    // parking lane) so every level stays populated and nobody shares.
     const home = ctx.homeSeats.get(agent.id);
     if (home) return home;
     const s = STAFF_DESKS[0];
-    return { x: s.x, z: s.z + 0.85, yaw: Math.PI, kind: 'desk' };
+    return { floor: 'workspace', x: s.x, z: s.z + 0.85, yaw: Math.PI, kind: 'desk' };
+  }
+
+  // Chairs on the visiting floors, in assignment order. Dining stools
+  // circle their table (matching the 4 compass stools built below),
+  // loungers line the rooftop deck, parking uses marked lane spots.
+  const DINE_TABLES = [
+    { x: -4.4, z: 2.6 },
+    { x: 0, z: 2.6 },
+    { x: 4.4, z: 2.6 },
+  ];
+  const ROOF_LOUNGERS = [
+    { x: 4.5, z: -1 },
+    { x: 6.7, z: -1 },
+    { x: 4.5, z: 2 },
+  ];
+  const PARK_LANE = [
+    { x: -9, z: 5.2 },
+    { x: -5.6, z: 5.2 },
+    { x: -2.2, z: 5.2 },
+    { x: 1.2, z: 5.2 },
+  ];
+
+  /** Next free chair index on a visiting floor (bumps the cursor so
+   *  concurrent roamers never share a chair within one pass). */
+  function claimChair(ctx: Ctx, floor: FloorId): number {
+    const i = ctx.chairCursor.get(floor) ?? 0;
+    ctx.chairCursor.set(floor, i + 1);
+    return i;
+  }
+
+  function roamSlotFor(agent: RoomAgent, floor: FloorId, chairIdx: number): Slot | null {
+    if (floor === 'kitchen') {
+      const t = DINE_TABLES[chairIdx % DINE_TABLES.length];
+      const ang = ((chairIdx % 4) / 4) * Math.PI * 2;
+      const x = t.x + Math.cos(ang) * 1.7;
+      const z = t.z + Math.sin(ang) * 1.7;
+      return { floor, x, z, yaw: Math.atan2(t.x - x, t.z - z), kind: 'dine' };
+    }
+    if (floor === 'rooftop') {
+      const p = ROOF_LOUNGERS[chairIdx % ROOF_LOUNGERS.length];
+      return { floor, x: p.x, z: p.z + 0.9, yaw: Math.PI, kind: 'lounge' };
+    }
+    if (floor === 'parking') {
+      const p = PARK_LANE[chairIdx % PARK_LANE.length];
+      return { floor, x: p.x, z: p.z, yaw: Math.PI, kind: 'park' };
+    }
+    return null;
   }
 
   interface Ctx {
@@ -1103,37 +1305,128 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
     talkingList: RoomAgent[];
     waitingList: RoomAgent[];
     /** Home seat per non-busy employee: desks first, then free
-     *  meeting chairs — every room stays populated, nobody shares. */
+     *  meeting chairs, then the visiting floors — every level stays
+     *  populated, nobody shares. */
     homeSeats: Map<string, Slot>;
+    /** Floor change requests waiting for a cabin slot. */
+    pendingFloor: Map<string, FloorId>;
+    /** Where roamers currently live (cleared when recalled/desked). */
+    roamFloor: Map<string, FloorId>;
+    /** Next free chair index per visiting floor. */
+    chairCursor: Map<FloorId, number>;
   }
 
   function buildCtx(list: RoomAgent[]): Ctx {
     const deskAgents = list.filter((a) => !a.is_system);
     const talkingList = deskAgents.filter((a) => a.state === 'talking');
     const waitingList = deskAgents.filter((a) => a.state === 'waiting_human');
+    const talking = new Set(talkingList.map((a) => a.id));
+    const waiting = new Set(waitingList.map((a) => a.id));
     const staying = deskAgents.filter((a) => a.state !== 'talking' && a.state !== 'waiting_human');
     const homeSeats = new Map<string, Slot>();
-    staying.forEach((a, i) => {
-      if (i < STAFF_DESKS.length) {
-        const s = STAFF_DESKS[i];
-        homeSeats.set(a.id, { x: s.x, z: s.z + 0.85, yaw: Math.PI, kind: 'desk' });
-      } else {
-        // Desks full: settle into free meeting chairs so the meeting
-        // room stays alive instead of stacking staff at one desk.
-        const p = MEETING_SEATS[(i - STAFF_DESKS.length) % MEETING_SEATS.length];
-        homeSeats.set(a.id, { x: p.x, z: p.z, yaw: meetYaw(p), kind: 'meeting' });
+    const pendingFloor = new Map<string, FloorId>();
+    const chairCursor = new Map<FloorId, number>();
+    // An ordered CEO travels like staff (manual chair on the ordered
+    // floor); an unordered one never enters the desk queue (see slotFor).
+    const orderedCeo = list.find(
+      (a) =>
+        a.is_system &&
+        manualFloor.get(a.id) !== undefined &&
+        manualFloor.get(a.id) !== 'workspace' &&
+        a.state !== 'talking' &&
+        a.state !== 'waiting_human',
+    );
+    if (orderedCeo) {
+      const manual = manualFloor.get(orderedCeo.id)!;
+      const node = agents.get(orderedCeo.id);
+      if (!node || node.floor !== manual) pendingFloor.set(orderedCeo.id, manual);
+      roamFloor.set(orderedCeo.id, manual);
+      const s = roamSlotFor(orderedCeo, manual, chairCursor.get(manual) ?? 0);
+      chairCursor.set(manual, (chairCursor.get(manual) ?? 0) + 1);
+      if (s) homeSeats.set(orderedCeo.id, s);
+    }
+    // First pass: workspace seats in roster order. Staff with a manual
+    // order or a roam assignment skip the desk queue — they belong to
+    // their ordered floor (slotFor resolves the exact chair).
+    const overflow: RoomAgent[] = [];
+    for (const a of staying) {
+      const manual = manualFloor.get(a.id);
+      const held = roamFloor.get(a.id);
+      if ((manual && manual !== 'workspace') || (held && held !== 'workspace')) {
+        overflow.push(a);
+        continue;
       }
+      if (homeSeats.size < STAFF_DESKS.length) {
+        const s = STAFF_DESKS[homeSeats.size];
+        homeSeats.set(a.id, { floor: 'workspace', x: s.x, z: s.z + 0.85, yaw: Math.PI, kind: 'desk' });
+        roamFloor.delete(a.id);
+      } else if (homeSeats.size < STAFF_DESKS.length + MEETING_SEATS.length) {
+        const p = MEETING_SEATS[(homeSeats.size - STAFF_DESKS.length) % MEETING_SEATS.length];
+        homeSeats.set(a.id, { floor: 'workspace', x: p.x, z: p.z, yaw: meetYaw(p), kind: 'meeting' });
+        roamFloor.delete(a.id);
+      } else {
+        overflow.push(a);
+      }
+    }
+    // Second pass: manual orders first (exact floor), then overflow
+    // roams the visiting floors. A fresh roam queues a lift trip via
+    // pendingFloor; a held roam keeps its slot.
+    const order: FloorId[] = ['kitchen', 'rooftop', 'parking'];
+    let roamJ = 0;
+    overflow.forEach((a) => {
+      const manual = manualFloor.get(a.id);
+      if (manual && manual !== 'workspace') {
+        roamFloor.set(a.id, manual);
+        const probe: Ctx = {
+          talking,
+          waiting,
+          talkingList,
+          waitingList,
+          homeSeats,
+          pendingFloor,
+          roamFloor,
+          chairCursor,
+        };
+        // Manual trip is "fresh" unless the agent already lives there.
+        const node = agents.get(a.id);
+        if (!node || node.floor !== manual) pendingFloor.set(a.id, manual);
+        const s = roamSlotFor(a, manual, claimChair(probe, manual));
+        if (s) homeSeats.set(a.id, s);
+        return;
+      }
+      let held = roamFloor.get(a.id);
+      if (!held || held === 'workspace') {
+        held = order[roamJ % order.length];
+        pendingFloor.set(a.id, held);
+        roamFloor.set(a.id, held);
+      }
+      roamJ += 1;
+      const probe: Ctx = {
+        talking,
+        waiting,
+        talkingList,
+        waitingList,
+        homeSeats,
+        pendingFloor,
+        roamFloor,
+        chairCursor,
+      };
+      const s = roamSlotFor(a, held, claimChair(probe, held));
+      if (s) homeSeats.set(a.id, s);
     });
     return {
-      talking: new Set(talkingList.map((a) => a.id)),
-      waiting: new Set(waitingList.map((a) => a.id)),
+      talking,
+      waiting,
       talkingList,
       waitingList,
       homeSeats,
+      pendingFloor,
+      roamFloor,
+      chairCursor,
     };
   }
 
-  function addAgent(data: RoomAgent): AgentNode {
+  function addAgent(data: RoomAgent, floor: FloorId): AgentNode {
     const group = new THREE.Group();
     const rig = new THREE.Group();
     group.add(rig);
@@ -1143,28 +1436,95 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
     const headMat = new THREE.MeshStandardMaterial({ color: '#f1c9a5', roughness: 0.65 });
     if (data.is_system) headMat.color.set('#e8b98a');
 
-    const body = new THREE.Mesh(new THREE.CapsuleGeometry(0.32, 0.75, 4, 12), bodyMat);
-    body.position.y = 1.02;
+    // Blocky voxel torso + cube head (minecraft-style): crisp boxes,
+    // flat face with eyes so facing reads at a glance.
+    const body = new THREE.Mesh(new THREE.BoxGeometry(0.56, 0.72, 0.32), bodyMat);
+    body.position.y = 1.3;
     body.castShadow = true;
     rig.add(body);
 
-    const head = new THREE.Mesh(new THREE.SphereGeometry(0.27, 18, 14), headMat);
+    const head = new THREE.Mesh(new THREE.BoxGeometry(0.54, 0.54, 0.54), headMat);
     head.position.y = 1.95;
     head.castShadow = true;
     rig.add(head);
+    for (const side of [-1, 1] as const) {
+      const white = new THREE.Mesh(
+        new THREE.BoxGeometry(0.11, 0.13, 0.02),
+        std('#f8fafc', 0.6),
+      );
+      white.position.set(0.12 * side, 1.99, 0.275);
+      rig.add(white);
+      const pupil = new THREE.Mesh(
+        new THREE.BoxGeometry(0.05, 0.07, 0.02),
+        std('#1e3a8a', 0.6),
+      );
+      pupil.position.set(0.12 * side, 1.98, 0.285);
+      rig.add(pupil);
+    }
 
-    // Nose so facing reads at a glance.
-    const nose = new THREE.Mesh(new THREE.SphereGeometry(0.06, 8, 8), std('#d69e73', 0.6));
-    nose.position.set(0, 1.93, 0.26);
-    rig.add(nose);
+    // Pelvis + articulated legs in darkened agent color (work pants) so
+    // characters stand on shoes instead of hovering. Hips pivot for the
+    // walk swing and the chair sit; knees bend to match.
+    const pantsMat = new THREE.MeshStandardMaterial({ color: '#2b3245', roughness: 0.8 });
+    const pelvis = new THREE.Mesh(new THREE.BoxGeometry(0.46, 0.24, 0.3), pantsMat);
+    pelvis.position.y = 0.86;
+    pelvis.castShadow = true;
+    rig.add(pelvis);
+
+    function buildLeg(side: number): { hip: THREE.Group; knee: THREE.Group } {
+      const hip = new THREE.Group();
+      hip.position.set(0.14 * side, 0.82, 0);
+      const thigh = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.38, 0.24), pantsMat);
+      thigh.position.y = -0.19;
+      thigh.castShadow = true;
+      hip.add(thigh);
+      const knee = new THREE.Group();
+      knee.position.y = -0.38;
+      const shin = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.32, 0.22), pantsMat);
+      shin.position.y = -0.16;
+      shin.castShadow = true;
+      knee.add(shin);
+      const shoe = new THREE.Mesh(new THREE.BoxGeometry(0.22, 0.12, 0.34), std('#1f2937', 0.7));
+      shoe.position.set(0, -0.38, 0.05);
+      shoe.castShadow = true;
+      knee.add(shoe);
+      hip.add(knee);
+      rig.add(hip);
+      return { hip, knee };
+    }
+    const legL = buildLeg(-1);
+    const legR = buildLeg(1);
+
+    // Arms in shirt color pivot at the shoulder; hands share the skin
+    // material so name/selection tinting stays in sync for free.
+    function buildArm(side: number): THREE.Group {
+      const shoulder = new THREE.Group();
+      shoulder.position.set(0.38 * side, 1.52, 0);
+      const arm = new THREE.Mesh(new THREE.BoxGeometry(0.2, 0.6, 0.22), bodyMat);
+      arm.position.y = -0.3;
+      arm.castShadow = true;
+      shoulder.add(arm);
+      const hand = new THREE.Mesh(new THREE.BoxGeometry(0.18, 0.16, 0.2), headMat);
+      hand.position.y = -0.66;
+      hand.castShadow = true;
+      shoulder.add(hand);
+      rig.add(shoulder);
+      return shoulder;
+    }
+    const armL = buildArm(-1);
+    const armR = buildArm(1);
 
     if (data.is_system) {
-      const crown = new THREE.Mesh(
-        new THREE.ConeGeometry(0.2, 0.34, 8),
-        new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.35, metalness: 0.6 }),
-      );
-      crown.position.y = 2.32;
+      const crownMat = new THREE.MeshStandardMaterial({ color: '#fbbf24', roughness: 0.35, metalness: 0.6 });
+      const crown = new THREE.Mesh(new THREE.BoxGeometry(0.4, 0.12, 0.4), crownMat);
+      crown.position.y = 2.28;
+      crown.castShadow = true;
       rig.add(crown);
+      for (const [cx, cz] of [[-0.14, -0.14], [0.14, -0.14], [-0.14, 0.14], [0.14, 0.14]] as const) {
+        const spike = new THREE.Mesh(new THREE.BoxGeometry(0.08, 0.1, 0.08), crownMat);
+        spike.position.set(cx, 2.39, cz);
+        rig.add(spike);
+      }
     }
 
     const ringMat = new THREE.MeshBasicMaterial({ color: RING_COLORS.idle, transparent: true, opacity: 0.9 });
@@ -1195,13 +1555,20 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
     group.add(hit);
     hitMeshes.push(hit);
 
-    addTo('workspace', group);
+    addTo(floor, group);
     const node: AgentNode = {
       data,
       group,
       rig,
       bodyMat,
       headMat,
+      pantsMat,
+      hipL: legL.hip,
+      hipR: legR.hip,
+      kneeL: legL.knee,
+      kneeR: legR.knee,
+      armL,
+      armR,
       ringMat,
       selRing,
       label,
@@ -1213,6 +1580,12 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
       target: new THREE.Vector3(),
       desiredYaw: 0,
       phase: Math.random() * Math.PI * 2,
+      sitting: false,
+      sitBlend: 0,
+      floor,
+      leg: 'slot',
+      pending: null,
+      alightT: -10,
     };
     agents.set(data.id, node);
     return node;
@@ -1221,7 +1594,7 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
   function removeAgent(id: string): void {
     const node = agents.get(id);
     if (!node) return;
-    W.remove(node.group);
+    node.group.parent?.remove(node.group);
     node.group.traverse((obj) => {
       if (obj instanceof THREE.Mesh || obj instanceof THREE.Sprite) disposeObject(obj);
     });
@@ -1257,6 +1630,8 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
     node.bodyMat.color.copy(base);
     node.bodyMat.transparent = offline;
     node.bodyMat.opacity = offline ? 0.55 : 1;
+    node.pantsMat.transparent = offline;
+    node.pantsMat.opacity = offline ? 0.55 : 1;
     node.headMat.transparent = offline;
     node.headMat.opacity = offline ? 0.55 : 1;
     node.ringMat.color.set(offline ? RING_COLORS.offline : RING_COLORS[data.state]);
@@ -1293,16 +1668,61 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
     }
   }
 
+  /** Walk-to point at the lift lobby of a floor (local coords). */
+  function lobbySlot(floor: FloorId): Slot {
+    return { floor, x: LIFT_LOBBY.x, z: LIFT_LOBBY.z, yaw: Math.PI / 2, kind: 'lift' };
+  }
+
+  function startLiftTrip(node: AgentNode, to: FloorId): void {
+    // NB: node.pending (destination slot) must survive — maybeBoard
+    // reads trip.to from it. Clearing it strands the rider (same-floor
+    // loop: board → ride nowhere → alight where it started).
+    node.leg = 'toLift';
+    const lobby = lobbySlot(node.floor);
+    node.target.set(lobby.x, 0, lobby.z);
+    node.desiredYaw = lobby.yaw;
+    node.sitting = false;
+    if (!liftQueue.includes(node)) liftQueue.push(node);
+  }
+
   function retarget(): void {
     const ctx = buildCtx(roster);
     for (const data of roster) {
       const node = agents.get(data.id);
       if (!node) continue;
+      // Mid-journey agents keep their lift legs; the trip resolves them.
+      if (node.leg !== 'slot') continue;
       const slot = slotFor(data, ctx);
-      const base = floorY(floorIndex.workspace);
-      node.target.set(slot.x, base, slot.z);
+      const queuedFloor = ctx.pendingFloor.get(data.id);
+      if (queuedFloor && queuedFloor !== node.floor) {
+        // Fresh roam assignment: walk to this floor's lobby first.
+        node.pending = slot;
+        startLiftTrip(node, queuedFloor);
+        continue;
+      }
+      if (slot.floor !== node.floor) {
+        // Returning (recalled/busy): ride the lift back, same as roaming.
+        node.pending = slot;
+        startLiftTrip(node, slot.floor);
+        continue;
+      }
+      // Local target: floor groups already carry the world offset.
+      // Chair slots (desk/meeting/dine/lounge) want a seated pose.
+      node.target.set(slot.x, 0, slot.z);
       node.desiredYaw = slot.yaw;
+      node.sitting = slot.kind === 'desk' || slot.kind === 'meeting' || slot.kind === 'dine' || slot.kind === 'lounge';
     }
+  }
+
+  function sendToFloor(agentId: string, floor: FloorId): void {
+    const node = agents.get(agentId);
+    if (!node) return;
+    if (floor === 'workspace') {
+      manualFloor.delete(agentId);
+      // Recalled CEO walks back through the lift like everyone else.
+      roamFloor.delete(agentId);
+    } else manualFloor.set(agentId, floor);
+    retarget();
   }
 
   function setRoster(list: RoomAgent[]): void {
@@ -1325,18 +1745,129 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
           existing.group.add(existing.label);
         }
       } else {
-        const node = addAgent(data);
-        // Spawn at target so the first paint is already placed.
         const ctx = buildCtx(list);
         const slot = slotFor(data, ctx);
-        node.group.position.set(slot.x, floorY(floorIndex.workspace), slot.z);
+        const node = addAgent(data, slot.floor);
+        // Spawn at target so the first paint is already placed.
+        // Local Y: the floor group owns the world offset.
+        node.group.position.set(slot.x, 0, slot.z);
         node.group.rotation.y = slot.yaw;
+        node.target.set(slot.x, 0, slot.z);
+        node.desiredYaw = slot.yaw;
+        node.sitting = slot.kind === 'desk' || slot.kind === 'meeting' || slot.kind === 'dine' || slot.kind === 'lounge';
+        node.sitBlend = node.sitting ? 1 : 0;
       }
     }
     if (waterBreakerId && !roster.some((a) => a.id === waterBreakerId)) waterBreakerId = null;
     if (!waterBreakerId) pickWaterBreaker();
     retarget();
     for (const node of agents.values()) refreshChrome(node);
+  }
+
+  // ─── Lift machine ────────────────────────────────────────────────────
+  // One cabin serves the whole stack. A trip: agent walks to its floor
+  // lobby → boards when the car dwells there with doors open → rides
+  // (reparented into the cabin) → alights at the destination lobby →
+  // walks out to its slot. Door pairs ease open only at the served
+  // floor so the ride reads even in a focused single-floor view.
+  const LIFT_SPEED = FLOOR_GAP / 2.6; // one floor ≈ 2.6s
+  const DOOR_DWELL = 1.1; // seconds doors stay open for board/alight
+
+  function reparentAgent(node: AgentNode, floor: FloorId | 'cabin'): void {
+    node.group.parent?.remove(node.group);
+    if (floor === 'cabin') {
+      // Cabin-local: centered, facing the doors (-x toward the lobby).
+      node.group.position.set(0, 0, 0);
+      node.group.rotation.y = -Math.PI / 2;
+      cabin.add(node.group);
+    } else {
+      node.floor = floor;
+      floorGroups[floor].add(node.group);
+    }
+  }
+
+  function maybeBoard(node: AgentNode): void {
+    if (node.leg !== 'toLift' || liftTrip) return;
+    const qi = liftQueue.indexOf(node);
+    if (qi > 0) return; // FIFO: wait your turn for the car
+    if (qi === 0) liftQueue.shift();
+    const to = node.pending?.floor ?? node.floor;
+    liftTrip = { node, from: node.floor, to, phase: 'boarding', timer: 0 };
+    node.leg = 'inLift';
+    // Send the car to the pickup floor if it isn't there yet.
+    cabin.position.y = floorY(floorIndex[node.floor]);
+    doorTarget[node.floor] = 1;
+  }
+
+  function updateLift(dt: number): void {
+    // Ease every door pair toward its target.
+    const de = 1 - Math.exp(-5 * dt);
+    for (const meta of FLOORS) {
+      const f = meta.id;
+      doorOpen[f] += (doorTarget[f] - doorOpen[f]) * de;
+      const pair = doorLeaves[f];
+      if (pair) {
+        pair.left.position.z = LIFT_SHAFT.z - 0.31 - doorOpen[f] * 0.55;
+        pair.right.position.z = LIFT_SHAFT.z + 0.31 + doorOpen[f] * 0.55;
+      }
+    }
+    if (!liftTrip) {
+      // Idle car: park at the next queued rider's floor.
+      const next = liftQueue[0];
+      if (next) {
+        const y = floorY(floorIndex[next.floor]);
+        cabin.position.y += (y - cabin.position.y) * (1 - Math.exp(-2 * dt));
+      }
+      return;
+    }
+    const trip = liftTrip;
+    const node = trip.node;
+    if (!agents.has(node.data.id)) {
+      liftTrip = null; // rider left mid-trip; free the car
+      return;
+    }
+    trip.timer += dt;
+    if (trip.phase === 'boarding') {
+      // Dwell with doors open, then step into the cabin.
+      doorTarget[trip.from] = 1;
+      if (trip.timer >= DOOR_DWELL) {
+        reparentAgent(node, 'cabin');
+        doorTarget[trip.from] = 0;
+        trip.phase = trip.from === trip.to ? 'alighting' : 'riding';
+        trip.timer = 0;
+      }
+      return;
+    }
+    if (trip.phase === 'riding') {
+      const destY = floorY(floorIndex[trip.to]);
+      const dy = destY - cabin.position.y;
+      const step = Math.sign(dy) * Math.min(Math.abs(dy), LIFT_SPEED * dt);
+      cabin.position.y += step;
+      if (Math.abs(destY - cabin.position.y) < 0.02) {
+        cabin.position.y = destY;
+        trip.phase = 'alighting';
+        trip.timer = 0;
+        doorTarget[trip.to] = 1;
+      }
+      return;
+    }
+    // alighting: doors open at the destination, step out to the lobby,
+    // then walk to the real slot.
+    doorTarget[trip.to] = 1;
+    if (trip.timer >= DOOR_DWELL) {
+      doorTarget[trip.to] = 0;
+      const dest = node.pending ?? lobbySlot(trip.to);
+      reparentAgent(node, trip.to);
+      node.leg = 'toSlot';
+      node.group.position.set(LIFT_LOBBY.x, 0, LIFT_LOBBY.z);
+      node.group.rotation.y = -Math.PI / 2;
+      node.target.set(dest.x, 0, dest.z);
+      node.desiredYaw = dest.yaw;
+      node.sitting = dest.kind === 'desk' || dest.kind === 'meeting' || dest.kind === 'dine' || dest.kind === 'lounge';
+      node.pending = null;
+      node.alightT = elapsed;
+      liftTrip = null;
+    }
   }
 
   // ─── Floor switching + isolation mode ──────────────────────────────
@@ -1501,7 +2032,6 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
   // ─── Frame loop ──────────────────────────────────────────────────
   const clock = new THREE.Clock();
   let raf = 0;
-  let elapsed = 0;
   let disposed = false;
 
   function tick(): void {
@@ -1524,7 +2054,13 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
 
     if (simActive) {
     const k = 1 - Math.exp(-3 * dt);
+    updateLift(dt);
     for (const node of agents.values()) {
+      // Riders parent to the cabin: skip floor-local walking while aboard.
+      if (node.leg === 'inLift') {
+        animateAgent(node, dt, false);
+        continue;
+      }
       const g = node.group;
       const dist = Math.hypot(node.target.x - g.position.x, node.target.z - g.position.z);
       const moving = dist > 0.08;
@@ -1536,39 +2072,94 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
       } else {
         g.rotation.y = lerpAngle(g.rotation.y, node.desiredYaw, 1 - Math.exp(-4 * dt));
       }
+      // Anyone who reached their lobby and holds a cabin slot boards
+      // as soon as the car is free and dwelling at their floor.
+      if (node.leg === 'toLift' && !moving) maybeBoard(node);
+      animateAgent(node, dt, moving);
+    }
+    // Riders who stepped out finish their walk before going idle so
+    // the slot pose (sit/stand) only applies once truly arrived.
+    for (const node of agents.values()) {
+      if (node.leg !== 'toSlot') continue;
+      const arrived =
+        Math.hypot(node.target.x - node.group.position.x, node.target.z - node.group.position.z) < 0.12;
+      if (arrived && elapsed - node.alightT > 0.6) node.leg = 'slot';
+    }
 
-      // Per-state motion on the inner rig (ring stays grounded).
+  // ─── Per-agent animation (limbs + sit blend) ─────────────────────────
+  // Extracted so lift riders (parented to the cabin) animate too.
+  function animateAgent(node: AgentNode, dt: number, moving: boolean): void {
+      // Walk while relocating; ease into the chair once seated.
+      // Limbs swing on the inner rig so the ground ring never lifts.
       const t = elapsed;
       const p = node.phase;
       const st = node.data.status !== 'active' ? 'offline' : node.data.state;
-      switch (st) {
-        case 'working':
-          node.rig.position.y = Math.abs(Math.sin(t * 22 + p)) * 0.045;
-          node.rig.rotation.z = Math.sin(t * 22 + p) * 0.02;
-          break;
-        case 'talking':
-          node.rig.position.y = Math.abs(Math.sin(t * 6 + p)) * 0.09;
-          node.rig.rotation.z = 0;
-          break;
-        case 'idle':
-          node.rig.position.y = Math.sin(t * 1.6 + p) * 0.03 + 0.03;
-          node.rig.rotation.z = 0;
-          break;
-        case 'waiting_human':
-        case 'blocked':
-          node.rig.position.y = Math.abs(Math.sin(t * 3 + p)) * 0.05;
-          node.rig.rotation.z = Math.sin(t * 3 + p) * 0.03;
-          break;
-        default:
-          node.rig.position.y = 0;
-          node.rig.rotation.z = 0;
-          break;
-      }
+      const sitTarget = node.sitting && !moving ? 1 : 0;
+      node.sitBlend += THREE.MathUtils.clamp(sitTarget - node.sitBlend, -dt * 2.5, dt * 2.5);
+      const s = node.sitBlend;
+
       if (moving) {
-        node.rig.position.y += Math.abs(Math.sin(t * 10 + p)) * 0.08;
-        node.rig.rotation.z = Math.sin(t * 10 + p) * 0.06;
+        // Opposite-phase leg swing, knees trailing; arms counter-swing.
+        const w = t * 10 + p;
+        const swL = Math.sin(w);
+        const swR = Math.sin(w + Math.PI);
+        node.hipL.rotation.x = -0.55 * swL;
+        node.hipR.rotation.x = -0.55 * swR;
+        node.kneeL.rotation.x = 0.2 + 0.9 * Math.max(0, Math.sin(w + 0.7));
+        node.kneeR.rotation.x = 0.2 + 0.9 * Math.max(0, Math.sin(w + Math.PI + 0.7));
+        node.armL.rotation.x = 0.4 * swL;
+        node.armR.rotation.x = 0.4 * swR;
+        node.rig.position.y = Math.abs(Math.cos(w)) * 0.06;
+        node.rig.rotation.z = Math.sin(w) * 0.02;
+      } else if (s > 0.001) {
+        // Seated: thighs forward, shins down, pelvis dropped onto the
+        // chair pan (~0.48), hands reaching to the desk.
+        node.hipL.rotation.x = -1.45 * s;
+        node.hipR.rotation.x = -1.45 * s;
+        node.kneeL.rotation.x = 1.45 * s;
+        node.kneeR.rotation.x = 1.45 * s;
+        node.armL.rotation.x = -0.55 * s;
+        node.armR.rotation.x = -0.55 * s;
+        node.rig.position.y = -0.36 * s;
+        node.rig.rotation.z = 0;
+      } else {
+        // Standing: reset limb pose, keep the old per-state idle life
+        // (typing bounce, talk bob, breath sway) on the rig.
+        node.hipL.rotation.x = 0;
+        node.hipR.rotation.x = 0;
+        node.kneeL.rotation.x = 0;
+        node.kneeR.rotation.x = 0;
+        node.armL.rotation.x = 0;
+        node.armR.rotation.x = 0;
+        switch (st) {
+          case 'working':
+            node.armL.rotation.x = -0.7;
+            node.armR.rotation.x = -0.7 + Math.sin(t * 22 + p) * 0.12;
+            node.rig.position.y = Math.abs(Math.sin(t * 22 + p)) * 0.02;
+            node.rig.rotation.z = Math.sin(t * 22 + p) * 0.015;
+            break;
+          case 'talking':
+            node.armR.rotation.x = -0.9 + Math.sin(t * 6 + p) * 0.25;
+            node.armL.rotation.x = -0.2;
+            node.rig.position.y = Math.abs(Math.sin(t * 6 + p)) * 0.05;
+            node.rig.rotation.z = 0;
+            break;
+          case 'idle':
+            node.rig.position.y = Math.sin(t * 1.6 + p) * 0.02 + 0.02;
+            node.rig.rotation.z = 0;
+            break;
+          case 'waiting_human':
+          case 'blocked':
+            node.rig.position.y = Math.abs(Math.sin(t * 3 + p)) * 0.05;
+            node.rig.rotation.z = Math.sin(t * 3 + p) * 0.03;
+            break;
+          default:
+            node.rig.position.y = 0;
+            node.rig.rotation.z = 0;
+            break;
+        }
       }
-    }
+  }
 
     // Ease partitions toward glass/solid on focus/overview switches.
     for (const m of partMats) {
@@ -1593,6 +2184,7 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
     disposed = true;
     cancelAnimationFrame(raf);
     window.clearInterval(waterTimer);
+    window.clearInterval(roamTimer);
     ro.disconnect();
     window.removeEventListener('resize', resize);
     canvas.removeEventListener('pointerdown', onPointerDown);
@@ -1620,6 +2212,7 @@ export function createOfficeScene(canvas: HTMLCanvasElement, cb: Callbacks): Off
       selectedId = agentId;
       for (const node of agents.values()) node.selRing.visible = node.data.id === selectedId;
     },
+    sendToFloor,
     dispose,
   };
 }

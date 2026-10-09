@@ -14,6 +14,9 @@
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents } from '$lib/eventsSocket';
   import { liveStatusStore, type LiveAgentState } from '$lib/office/liveStatus.svelte';
+  import Modal from '$lib/ui/Modal.svelte';
+  import AgentSprite from '$lib/office/AgentSprite.svelte';
+  import { Icon } from '$lib/icons';
 
   // ---- Wire shapes --------------------------------------------------------
   // @katnor/core types `created_at`/`updated_at` as `Date` (see
@@ -103,13 +106,16 @@
   }
 
   const cardBaseClass =
-    'flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4';
+    'card-lift enter flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4';
 
-  function cardClasses(status: AgentStatus): string {
+  function cardClasses(agent: AgentRow): string {
     // Offline agents stay in the list (firing never deletes anyone) but
     // read as visibly de-emphasized rather than looking just like an
-    // active teammate.
-    return status === 'offline' ? `${cardBaseClass} opacity-60` : cardBaseClass;
+    // active teammate. The CEO's card carries the accent border - they sit
+    // apart from every team group, and the border says so at a glance.
+    const offline = agent.status === 'offline' ? ' opacity-60' : '';
+    const ceo = agent.is_system ? ' border-[var(--color-accent)]' : '';
+    return `${cardBaseClass}${offline}${ceo}`;
   }
 
   // ---- Data + live updates -------------------------------------------------
@@ -201,7 +207,11 @@
 
   $effect(() => {
     const unsubscribe = subscribeToEvents((event) => {
-      if (['agent.hired', 'agent.updated', 'agent.fired', 'team.created'].includes(event.type)) {
+      if (
+        ['agent.hired', 'agent.updated', 'agent.fired', 'team.created', 'team.deleted'].includes(
+          event.type,
+        )
+      ) {
         refresh();
       }
     });
@@ -252,9 +262,33 @@
     rowUi = { ...rowUi, [id]: patch };
   }
 
+  // Firing is a deliberate act, so it gets a confirm dialog rather than the
+  // native `confirm()` - same friction, none of the jank.
+  let fireTarget = $state<AgentRow | null>(null);
+  let fireOpen = $state(false);
+
+  function openFire(agent: AgentRow) {
+    fireTarget = agent;
+    fireOpen = true;
+  }
+
+  function closeFire() {
+    // A fire in flight must finish first - closing early would orphan the
+    // row's `firing` state with no dialog left to explain it.
+    if (fireTarget && getRowUi(fireTarget.id).firing) return;
+    fireOpen = false;
+    fireTarget = null;
+  }
+
+  async function confirmFire() {
+    const agent = fireTarget;
+    if (!agent || getRowUi(agent.id).firing) return;
+    fireOpen = false;
+    fireTarget = null;
+    await fireAgent(agent);
+  }
+
   async function fireAgent(agent: AgentRow) {
-    const ok = confirm(`Fire ${agent.name}? This sets them offline - their history is kept.`);
-    if (!ok) return;
     setRowUi(agent.id, { firing: true, fireError: null });
     try {
       await trpc().agents.fire.mutate({ id: agent.id });
@@ -285,17 +319,15 @@
   };
 
   let editDraft = $state<EditDraft | null>(null);
+  let editOpen = $state(false);
   let editSaving = $state(false);
   let editError = $state<string | null>(null);
-  let editSaved = $state(false);
 
-  function toggleEdit(agent: AgentRow) {
-    if (editDraft && editDraft.agentId === agent.id) {
-      editDraft = null;
-      return;
-    }
+  // The edit form lives in a modal now: 20+ fields expanding inside the
+  // card pushed the whole org chart down on every open (layout shift by
+  // another name). Same draft, different host.
+  function openEdit(agent: AgentRow) {
     editError = null;
-    editSaved = false;
     // Legacy agents hired onto a raw provider type (pre-Models) open
     // with provider forced to "combo" and an empty model: the old
     // `{provider, model-id}` pair has no Model equivalent to pre-select,
@@ -318,6 +350,14 @@
       budget_daily_usd: Number(agent.budget_daily_usd),
       status: agent.status,
     };
+    editOpen = true;
+  }
+
+  function closeEdit() {
+    if (editSaving) return;
+    editOpen = false;
+    editDraft = null;
+    editError = null;
   }
 
   async function saveEdit() {
@@ -326,7 +366,6 @@
     const original = agentById.get(draft.agentId);
     editSaving = true;
     editError = null;
-    editSaved = false;
     try {
       await trpc().agents.update.mutate({
         id: draft.agentId,
@@ -354,7 +393,10 @@
         // the CEO either - keeps their status untouched from this form.
         ...(original?.is_system ? {} : { status: draft.status }),
       });
-      editSaved = true;
+      // Success closes the dialog - the updated card settling back in is
+      // the confirmation, no "Saved." banner needed.
+      editOpen = false;
+      editDraft = null;
       await refresh();
     } catch (err) {
       editError = describeError(err);
@@ -410,12 +452,21 @@
   let hireDraft = $state<HireDraft>(emptyHireDraft());
   let hireSaving = $state(false);
   let hireError = $state<string | null>(null);
-  let hireSuccess = $state<string | null>(null);
+
+  function openHire() {
+    hireError = null;
+    hireOpen = true;
+  }
+
+  function closeHire() {
+    if (hireSaving) return;
+    hireOpen = false;
+    hireError = null;
+  }
 
   async function submitHire() {
     hireSaving = true;
     hireError = null;
-    hireSuccess = null;
     try {
       const name = hireDraft.name.trim();
       const avatar = hireDraft.avatar.trim();
@@ -445,8 +496,8 @@
         reports_to: hireDraft.reports_to === '' ? null : hireDraft.reports_to,
         team_id: hireDraft.team_id === '' ? null : hireDraft.team_id,
       });
-      hireSuccess = `Hired ${name}.`;
       hireDraft = emptyHireDraft();
+      hireOpen = false;
       await refresh();
     } catch (err) {
       hireError = describeError(err);
@@ -458,14 +509,24 @@
   // ---- Teams ----------------------------------------------------------------
   let teamDraftName = $state('');
   let teamDraftLead = $state('');
+  let teamOpen = $state(false);
   let teamSaving = $state(false);
   let teamError = $state<string | null>(null);
-  let teamSaved = $state(false);
+
+  function openTeam() {
+    teamError = null;
+    teamOpen = true;
+  }
+
+  function closeTeam() {
+    if (teamSaving) return;
+    teamOpen = false;
+    teamError = null;
+  }
 
   async function submitTeam() {
     teamSaving = true;
     teamError = null;
-    teamSaved = false;
     try {
       await trpc().teams.create.mutate({
         name: teamDraftName.trim(),
@@ -473,7 +534,7 @@
       });
       teamDraftName = '';
       teamDraftLead = '';
-      teamSaved = true;
+      teamOpen = false;
       await refresh();
     } catch (err) {
       teamError = describeError(err);
@@ -481,14 +542,59 @@
       teamSaving = false;
     }
   }
+
+  // ---- Delete team ------------------------------------------------------
+  // Hard delete with a confirm step (same pattern as fireAgent above):
+  // members keep their jobs (team_id → null), the team's channels go too.
+  let teamDeleteTarget = $state<TeamRow | null>(null);
+  let teamDeleteOpen = $state(false);
+  let teamDeleting = $state(false);
+  let teamDeleteError = $state<string | null>(null);
+
+  function openTeamDelete(team: TeamRow) {
+    teamDeleteError = null;
+    teamDeleteTarget = team;
+    teamDeleteOpen = true;
+  }
+
+  function closeTeamDelete() {
+    if (teamDeleting) return;
+    teamDeleteOpen = false;
+    teamDeleteTarget = null;
+    teamDeleteError = null;
+  }
+
+  async function confirmTeamDelete() {
+    const team = teamDeleteTarget;
+    if (!team || teamDeleting) return;
+    teamDeleting = true;
+    teamDeleteError = null;
+    try {
+      await trpc().teams.delete.mutate({ id: team.id });
+      teamDeleteOpen = false;
+      teamDeleteTarget = null;
+      await refresh();
+    } catch (err) {
+      teamDeleteError = describeError(err);
+    } finally {
+      teamDeleting = false;
+    }
+  }
 </script>
 
-{#snippet agentCard(agent: AgentRow)}
+{#snippet agentCard(agent: AgentRow, index = 0)}
   {@const ui = getRowUi(agent.id)}
-  <div class={cardClasses(agent.status)}>
+  <div class={cardClasses(agent)} style="--enter-i: {Math.min(index, 8)}">
     <div class="flex flex-wrap items-start justify-between gap-3">
-      <div class="flex min-w-0 flex-col gap-1">
-        <div class="flex flex-wrap items-center gap-2">
+      <div class="flex min-w-0 items-start gap-3">
+        <AgentSprite
+          agentId={agent.id}
+          isCeo={agent.is_system}
+          height={48}
+          label="{agent.name} avatar"
+        />
+        <div class="flex min-w-0 flex-col gap-1">
+          <div class="flex flex-wrap items-center gap-2">
           <h3 class="font-medium">{agent.name}</h3>
           {#if agent.is_system}
             <span
@@ -525,17 +631,18 @@
           {providerLabels[agent.model_config.provider]} · {agent.model_config.model}
         </p>
         <p class="text-xs text-[var(--color-text-muted)]">{formatBudget(agent.budget_daily_usd)}</p>
+        </div>
       </div>
 
       <div class="flex shrink-0 flex-wrap gap-2">
-        <button type="button" class={secondaryButtonClass} onclick={() => toggleEdit(agent)}>
-          {editDraft?.agentId === agent.id ? 'Close' : 'Edit'}
+        <button type="button" class={secondaryButtonClass} onclick={() => openEdit(agent)}>
+          <span class="flex items-center gap-1.5"><Icon name="pencil" />Edit</span>
         </button>
         {#if !agent.is_system}
           <button
             type="button"
-            class={dangerButtonClass}
-            onclick={() => fireAgent(agent)}
+            class={secondaryButtonClass}
+            onclick={() => openFire(agent)}
             disabled={ui.firing}
           >
             {ui.firing ? 'Firing…' : 'Fire'}
@@ -547,142 +654,32 @@
     {#if !agent.is_system && ui.fireError}
       <p class="text-sm text-[var(--color-danger)]">{ui.fireError}</p>
     {/if}
-
-    {#if editDraft && editDraft.agentId === agent.id}
-      {@const draft = editDraft}
-      <form
-        class="flex flex-col gap-3 rounded-md border border-[var(--color-border)] bg-[var(--color-surface-muted)] p-3"
-        onsubmit={(event) => {
-          event.preventDefault();
-          saveEdit();
-        }}
-      >
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Title</span>
-            <input type="text" required bind:value={draft.title} class={inputClass} />
-          </label>
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Style</span>
-            <input type="text" bind:value={draft.style} class={inputClass} />
-          </label>
-        </div>
-
-        <label class={labelClass}>
-          <span class="text-[var(--color-text-muted)]">Bio</span>
-          <textarea rows="2" bind:value={draft.bio} class={inputClass}></textarea>
-        </label>
-        <label class={labelClass}>
-          <span class="text-[var(--color-text-muted)]">Personality</span>
-          <textarea rows="2" bind:value={draft.personality} class={inputClass}></textarea>
-        </label>
-        <label class={labelClass}>
-          <span class="text-[var(--color-text-muted)]">Strengths (comma or newline separated)</span>
-          <textarea rows="2" bind:value={draft.strengths} class={inputClass}></textarea>
-        </label>
-        <label class={labelClass}>
-          <span class="text-[var(--color-text-muted)]">System prompt</span>
-          <textarea rows="4" bind:value={draft.system_prompt} class="{inputClass} font-mono text-xs"
-          ></textarea>
-        </label>
-
-        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Model</span>
-            <select required bind:value={draft.model} class={inputClass}>
-              <option value="" disabled>Select a model…</option>
-              {#each modelCombos as combo (combo.id)}
-                <option value={combo.name}>{combo.name}</option>
-              {/each}
-            </select>
-            {#if modelCombos.length === 0}
-              <span class="text-xs text-[var(--color-text-muted)]"
-                >No models yet - create one in <a href="/settings" class="underline"
-                  >Settings &gt; Models</a
-                > first.</span
-              >
-            {/if}
-          </label>
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Effort</span>
-            <select bind:value={draft.effort} class={inputClass}>
-              {#each MODEL_EFFORTS as e (e)}
-                <option value={e}>{e}</option>
-              {/each}
-            </select>
-          </label>
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Thinking display</span>
-            <select bind:value={draft.thinking_display} class={inputClass}>
-              {#each THINKING_DISPLAY_MODES as t (t)}
-                <option value={t}>{t}</option>
-              {/each}
-            </select>
-          </label>
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Max tokens</span>
-            <input
-              type="number"
-              min="1"
-              step="1"
-              bind:value={draft.max_tokens}
-              class={inputClass}
-            />
-          </label>
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Daily budget (USD)</span>
-            <input
-              type="number"
-              min="0"
-              step="0.01"
-              bind:value={draft.budget_daily_usd}
-              class={inputClass}
-            />
-          </label>
-        </div>
-
-        <label class={labelClass}>
-          <span class="text-[var(--color-text-muted)]">Tools (comma-separated)</span>
-          <input type="text" bind:value={draft.tools} class={inputClass} />
-        </label>
-
-        {#if !agent.is_system}
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Status</span>
-            <select bind:value={draft.status} class={inputClass}>
-              {#each AGENT_STATUSES as s (s)}
-                <option value={s}>{s}</option>
-              {/each}
-            </select>
-          </label>
-        {/if}
-
-        {#if editError}
-          <p class="text-sm text-[var(--color-danger)]">{editError}</p>
-        {:else if editSaved}
-          <p class="text-sm text-[var(--color-success)]">Saved.</p>
-        {/if}
-
-        <div class="flex gap-2">
-          <button type="submit" class={primaryButtonClass} disabled={editSaving}>
-            {editSaving ? 'Saving…' : 'Save'}
-          </button>
-          <button type="button" class={secondaryButtonClass} onclick={() => (editDraft = null)}
-            >Cancel</button
-          >
-        </div>
-      </form>
-    {/if}
   </div>
 {/snippet}
 
 <div class="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 sm:p-6">
-  <div>
-    <h1 class="text-2xl font-semibold">Team</h1>
-    <p class="mt-1 text-[var(--color-text-muted)]">
-      Everyone you've hired, who they report to, and which team they're on. Click an agent to edit
-      their persona, model, tools, and budget, or fire them. Hire new agents and create teams below.
-    </p>
+  <div class="flex flex-wrap items-start justify-between gap-3">
+    <div class="min-w-0">
+      <h1 class="text-2xl font-semibold">Team</h1>
+      <p class="mt-1 text-[var(--color-text-muted)]">
+        Everyone you've hired, who they report to, and which team they're on. Edit an
+        agent's persona, model, tools, and budget, or fire them. Hire agents and create
+        teams from the buttons.
+      </p>
+    </div>
+    <div class="flex shrink-0 flex-wrap gap-2">
+      <button type="button" class={secondaryButtonClass} onclick={openTeam}>
+        <span class="flex items-center gap-1.5"><Icon name="plus" />New team</span>
+      </button>
+      <button
+        type="button"
+        onclick={openHire}
+        class="flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)]"
+      >
+        <Icon name="plus" size="1em" />
+        Hire
+      </button>
+    </div>
   </div>
 
   {#if loadError}
@@ -722,7 +719,7 @@
     {:else}
       <div class="flex flex-col gap-4">
         {#if ceo}
-          {@render agentCard(ceo)}
+          {@render agentCard(ceo, 0)}
         {/if}
 
         {#each groupedByTeam as group (group.teamId)}
@@ -733,8 +730,8 @@
               {teamName(group.teamId)}
             </h3>
             <div class="flex flex-col gap-3">
-              {#each group.agents as agent (agent.id)}
-                {@render agentCard(agent)}
+              {#each group.agents as agent, i (agent.id)}
+                {@render agentCard(agent, i + 1)}
               {/each}
             </div>
           </div>
@@ -743,19 +740,7 @@
     {/if}
   </section>
 
-  <section
-    class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-  >
-    <button
-      type="button"
-      class="flex items-center justify-between gap-3 text-left"
-      onclick={() => (hireOpen = !hireOpen)}
-    >
-      <span class="text-lg font-semibold">Hire manually</span>
-      <span class="text-sm text-[var(--color-text-muted)]">{hireOpen ? 'Hide' : 'Show'}</span>
-    </button>
-
-    {#if hireOpen}
+  <Modal open={hireOpen} title="Hire agent" onclose={closeHire}>
       <form
         class="flex flex-col gap-4"
         onsubmit={(event) => {
@@ -874,18 +859,23 @@
 
         {#if hireError}
           <p class="text-sm text-[var(--color-danger)]">{hireError}</p>
-        {:else if hireSuccess}
-          <p class="text-sm text-[var(--color-success)]">{hireSuccess}</p>
         {/if}
 
-        <div>
+        <div class="flex gap-2">
           <button type="submit" class={primaryButtonClass} disabled={hireSaving}>
             {hireSaving ? 'Hiring…' : 'Hire'}
           </button>
+          <button
+            type="button"
+            class={secondaryButtonClass}
+            onclick={closeHire}
+            disabled={hireSaving}
+          >
+            Cancel
+          </button>
         </div>
       </form>
-    {/if}
-  </section>
+  </Modal>
 
   <section class="flex flex-col gap-4">
     <h2 class="text-lg font-semibold">Teams</h2>
@@ -894,26 +884,33 @@
       {#if teams.length === 0}
         <p class="text-sm text-[var(--color-text-muted)]">No teams yet.</p>
       {/if}
-      {#each teams as t (t.id)}
+      {#each teams as t, i (t.id)}
         <div
-          class="flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+          class="card-lift enter flex flex-wrap items-center justify-between gap-2 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
+          style="--enter-i: {Math.min(i, 8)}"
         >
           <span class="font-medium">{t.name}</span>
-          <span class="text-sm text-[var(--color-text-muted)]"
-            >Lead: {agentName(t.lead_agent_id)}</span
-          >
+          <span class="flex items-center gap-3">
+            <span class="text-sm text-[var(--color-text-muted)]"
+              >Lead: {agentName(t.lead_agent_id)}</span
+            >
+            <button type="button" class={secondaryButtonClass} onclick={() => openTeamDelete(t)}>
+              Delete
+            </button>
+          </span>
         </div>
       {/each}
     </div>
+  </section>
 
+  <Modal open={teamOpen} title="New team" onclose={closeTeam}>
     <form
-      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      class="flex flex-col gap-3"
       onsubmit={(event) => {
         event.preventDefault();
         submitTeam();
       }}
     >
-      <h3 class="font-medium">Create team</h3>
       <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
         <label class={labelClass}>
           <span class="text-[var(--color-text-muted)]">Name</span>
@@ -931,14 +928,216 @@
       </div>
       {#if teamError}
         <p class="text-sm text-[var(--color-danger)]">{teamError}</p>
-      {:else if teamSaved}
-        <p class="text-sm text-[var(--color-success)]">Team created.</p>
       {/if}
-      <div>
+      <div class="flex gap-2">
         <button type="submit" class={primaryButtonClass} disabled={teamSaving}>
           {teamSaving ? 'Creating…' : 'Create team'}
         </button>
+        <button
+          type="button"
+          class={secondaryButtonClass}
+          onclick={closeTeam}
+          disabled={teamSaving}
+        >
+          Cancel
+        </button>
       </div>
     </form>
-  </section>
+  </Modal>
+
+  <Modal open={editOpen} title="Edit agent" onclose={closeEdit}>
+    {#if editDraft}
+      {@const draft = editDraft}
+      <form
+        class="flex flex-col gap-3"
+        onsubmit={(event) => {
+          event.preventDefault();
+          saveEdit();
+        }}
+      >
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label class={labelClass}>
+            <span class="text-[var(--color-text-muted)]">Title</span>
+            <input type="text" required bind:value={draft.title} class={inputClass} />
+          </label>
+          <label class={labelClass}>
+            <span class="text-[var(--color-text-muted)]">Style</span>
+            <input type="text" bind:value={draft.style} class={inputClass} />
+          </label>
+        </div>
+
+        <label class={labelClass}>
+          <span class="text-[var(--color-text-muted)]">Bio</span>
+          <textarea rows="2" bind:value={draft.bio} class={inputClass}></textarea>
+        </label>
+        <label class={labelClass}>
+          <span class="text-[var(--color-text-muted)]">Personality</span>
+          <textarea rows="2" bind:value={draft.personality} class={inputClass}></textarea>
+        </label>
+        <label class={labelClass}>
+          <span class="text-[var(--color-text-muted)]">Strengths (comma or newline separated)</span>
+          <textarea rows="2" bind:value={draft.strengths} class={inputClass}></textarea>
+        </label>
+        <label class={labelClass}>
+          <span class="text-[var(--color-text-muted)]">System prompt</span>
+          <textarea rows="4" bind:value={draft.system_prompt} class="{inputClass} font-mono text-xs"
+          ></textarea>
+        </label>
+
+        <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
+          <label class={labelClass}>
+            <span class="text-[var(--color-text-muted)]">Model</span>
+            <select required bind:value={draft.model} class={inputClass}>
+              <option value="" disabled>Select a model…</option>
+              {#each modelCombos as combo (combo.id)}
+                <option value={combo.name}>{combo.name}</option>
+              {/each}
+            </select>
+            {#if modelCombos.length === 0}
+              <span class="text-xs text-[var(--color-text-muted)]"
+                >No models yet - create one in <a href="/settings" class="underline"
+                  >Settings &gt; Models</a
+                > first.</span
+              >
+            {/if}
+          </label>
+          <label class={labelClass}>
+            <span class="text-[var(--color-text-muted)]">Effort</span>
+            <select bind:value={draft.effort} class={inputClass}>
+              {#each MODEL_EFFORTS as e (e)}
+                <option value={e}>{e}</option>
+              {/each}
+            </select>
+          </label>
+          <label class={labelClass}>
+            <span class="text-[var(--color-text-muted)]">Thinking display</span>
+            <select bind:value={draft.thinking_display} class={inputClass}>
+              {#each THINKING_DISPLAY_MODES as t (t)}
+                <option value={t}>{t}</option>
+              {/each}
+            </select>
+          </label>
+          <label class={labelClass}>
+            <span class="text-[var(--color-text-muted)]">Max tokens</span>
+            <input
+              type="number"
+              min="1"
+              step="1"
+              bind:value={draft.max_tokens}
+              class={inputClass}
+            />
+          </label>
+          <label class={labelClass}>
+            <span class="text-[var(--color-text-muted)]">Daily budget (USD)</span>
+            <input
+              type="number"
+              min="0"
+              step="0.01"
+              bind:value={draft.budget_daily_usd}
+              class={inputClass}
+            />
+          </label>
+        </div>
+
+        <label class={labelClass}>
+          <span class="text-[var(--color-text-muted)]">Tools (comma-separated)</span>
+          <input type="text" bind:value={draft.tools} class={inputClass} />
+        </label>
+
+        {#if !agentById.get(draft.agentId)?.is_system}
+          <label class={labelClass}>
+            <span class="text-[var(--color-text-muted)]">Status</span>
+            <select bind:value={draft.status} class={inputClass}>
+              {#each AGENT_STATUSES as s (s)}
+                <option value={s}>{s}</option>
+              {/each}
+            </select>
+          </label>
+        {/if}
+
+        {#if editError}
+          <p class="text-sm text-[var(--color-danger)]">{editError}</p>
+        {/if}
+
+        <div class="flex gap-2">
+          <button type="submit" class={primaryButtonClass} disabled={editSaving}>
+            {editSaving ? 'Saving…' : 'Save'}
+          </button>
+          <button
+            type="button"
+            class={secondaryButtonClass}
+            onclick={closeEdit}
+            disabled={editSaving}
+          >
+            Cancel
+          </button>
+        </div>
+      </form>
+    {/if}
+  </Modal>
+
+  <Modal open={fireOpen} title="Fire agent?" onclose={closeFire}>
+    {#if fireTarget}
+      {@const target = fireTarget}
+      {@const targetUi = getRowUi(target.id)}
+      <div class="flex flex-col gap-4">
+        <p class="text-sm">
+          Fire <span class="font-medium">{target.name}</span>? They go offline but stay in
+          the list - history and past work stay intact.
+        </p>
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class={dangerButtonClass}
+            onclick={confirmFire}
+            disabled={targetUi.firing}
+          >
+            {targetUi.firing ? 'Firing…' : 'Fire'}
+          </button>
+          <button
+            type="button"
+            class={secondaryButtonClass}
+            onclick={closeFire}
+            disabled={targetUi.firing}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    {/if}
+  </Modal>
+
+  <Modal open={teamDeleteOpen} title="Delete team?" onclose={closeTeamDelete}>
+    {#if teamDeleteTarget}
+      {@const target = teamDeleteTarget}
+      <div class="flex flex-col gap-4">
+        <p class="text-sm">
+          Delete <span class="font-medium">{target.name}</span>? Members keep their jobs
+          (they just become teamless) but the team's channels and messages go with it.
+        </p>
+        {#if teamDeleteError}
+          <p class="text-sm text-[var(--color-danger)]">{teamDeleteError}</p>
+        {/if}
+        <div class="flex gap-2">
+          <button
+            type="button"
+            class={dangerButtonClass}
+            onclick={confirmTeamDelete}
+            disabled={teamDeleting}
+          >
+            {teamDeleting ? 'Deleting…' : 'Delete'}
+          </button>
+          <button
+            type="button"
+            class={secondaryButtonClass}
+            onclick={closeTeamDelete}
+            disabled={teamDeleting}
+          >
+            Cancel
+          </button>
+        </div>
+      </div>
+    {/if}
+  </Modal>
 </div>
+

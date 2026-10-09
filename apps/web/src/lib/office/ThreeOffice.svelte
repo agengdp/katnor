@@ -22,6 +22,7 @@
     overview = false,
     onSelectAgent,
     onSelectZone,
+    onScene,
   }: {
     agents: RoomAgent[];
     /** 0..1 - extra dimming as today's spend approaches the daily budget. */
@@ -31,6 +32,8 @@
     overview?: boolean;
     onSelectAgent: (agentId: string) => void;
     onSelectZone: (zoneId: string) => void;
+    /** Parent grabs the live scene (to issue manual floor orders). */
+    onScene?: (scene: OfficeScene | null) => void;
   } = $props();
 
   let canvas = $state<HTMLCanvasElement | undefined>(undefined);
@@ -134,9 +137,11 @@
       if (!live) return;
       sceneRef = createOfficeScene(el, { onSelectAgent, onSelectZone });
       scene = sceneRef;
+      onScene?.(sceneRef);
     })().catch((err) => console.error('[three-office] failed to start', err));
     return () => {
       live = false;
+      onScene?.(null);
       sceneRef?.dispose();
       scene = null;
     };

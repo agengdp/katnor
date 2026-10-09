@@ -324,14 +324,18 @@
         </select>
       </label>
 
-      <div class="flex gap-1">
+      <div
+        aria-label="Knowledge views"
+        class="flex w-fit gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1"
+      >
         {#each [['wiki', 'Wiki'], ['graph', 'Graph'], ['ask', 'Ask']] as [value, label] (value)}
           <button
             type="button"
+            aria-pressed={tab === value}
             onclick={() => switchTab(value as Tab)}
             class="rounded-md px-3 py-1.5 text-sm font-medium {tab === value
               ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
-              : 'border border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'}"
+              : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]'}"
           >
             {label}
           </button>
@@ -343,16 +347,18 @@
       <div class="flex flex-wrap items-center gap-2">
         <button
           type="button"
-          class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+          class="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
           onclick={lintProject}
         >
+          <Icon name="wrench" />
           Lint wiki now
         </button>
         <button
           type="button"
-          class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+          class="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
           onclick={reindexCode}
         >
+          <Icon name="search" />
           Reindex code
         </button>
         {#if actionMessage}
@@ -364,7 +370,7 @@
         <p class="text-sm text-[var(--color-danger)]">{pagesError}</p>
       {/if}
 
-      <div class="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
+      <div class="enter flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
         <div class="flex w-full flex-col gap-1 sm:w-64 sm:shrink-0">
           {#if pagesLoading}
             <p class="text-sm text-[var(--color-text-muted)]">Loading…</p>
@@ -373,14 +379,15 @@
               No pages yet - the Librarian creates these as the team works.
             </p>
           {:else}
-            {#each pages as page (page.path)}
+            {#each pages as page, i (page.path)}
               <button
                 type="button"
                 onclick={() => openPage(page)}
-                class="flex flex-col items-start rounded-md px-3 py-2 text-left text-sm {selectedPath ===
+                class="enter flex flex-col items-start rounded-md px-3 py-2 text-left text-sm {selectedPath ===
                 page.path
                   ? 'bg-[var(--color-surface-muted)] font-medium'
                   : 'hover:bg-[var(--color-surface-muted)]'}"
+                style="--enter-i: {Math.min(i, 8)}"
               >
                 <span>{page.title}</span>
                 <span class="text-xs text-[var(--color-text-muted)]">{page.path}</span>
@@ -436,7 +443,7 @@
           or after a manual "Reindex code" from the Wiki tab.
         </p>
       {:else}
-        <div class="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
+        <div class="enter flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
           <div
             class="min-w-0 flex-1 overflow-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)]"
           >
@@ -461,9 +468,12 @@
                   tabindex="0"
                   onclick={() => (selectedNodeId = node.id)}
                   onkeydown={(e) => {
-                    if (e.key === 'Enter') selectedNodeId = node.id;
+                    if (e.key === 'Enter' || e.key === ' ' || e.key === 'Spacebar') {
+                      e.preventDefault();
+                      selectedNodeId = node.id;
+                    }
                   }}
-                  style="cursor:pointer"
+                  class="cursor-pointer"
                 >
                   <circle
                     cx={node.x}
@@ -527,7 +537,7 @@
         </div>
       {/if}
     {:else}
-      <div class="flex flex-col gap-3">
+      <div class="enter flex flex-col gap-3">
         <form class="flex gap-2" onsubmit={askWiki}>
           <input
             type="text"
@@ -538,8 +548,9 @@
           <button
             type="submit"
             disabled={asking}
-            class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+            class="inline-flex items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
           >
+            <Icon name="search" />
             {asking ? 'Asking…' : 'Ask'}
           </button>
         </form>
@@ -550,7 +561,7 @@
 
         {#if answer}
           <div
-            class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm"
+            class="enter flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm"
           >
             <p class="whitespace-pre-wrap">{answer}</p>
             {#if citations.length > 0}

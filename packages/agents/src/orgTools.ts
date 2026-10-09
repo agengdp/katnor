@@ -1,6 +1,6 @@
 import type { HireApprovalPayload } from '@katnor/core';
-import { MODEL_EFFORTS, MODEL_PROVIDERS, THINKING_DISPLAY_MODES } from '@katnor/core';
-import { agentRepo, approvalRepo, companyRepo, eventRepo, teamRepo } from '@katnor/db';
+import { MODEL_EFFORTS, THINKING_DISPLAY_MODES } from '@katnor/core';
+import { agentRepo, approvalRepo, companyRepo, eventRepo, projectRepo, teamRepo } from '@katnor/db';
 import type { ToolDefinition } from '@katnor/tools';
 import type { AgentToolContext } from './context.js';
 import { createAgentFromPayload } from './hiring.js';
@@ -31,7 +31,7 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
   {
     name: 'hire_agent',
     description:
-      'Hire a new AI employee: a name, a persona, a model, and an allowlist of tools they can use. Subject to the company hire approval policy - it may need the owner to approve before the employee actually exists.',
+      'Hire a new AI employee: a name, a persona, a model, and an allowlist of tools they can use. Omit `model` (or leave its `model` name empty) to hire onto the company default Model from Settings > Models - only pass an explicit Model name when the role genuinely needs a non-default one. Subject to the company hire approval policy - it may need the owner to approve before the employee actually exists.',
     ceoOnly: true,
     inputSchema: {
       type: 'object',
@@ -55,6 +55,8 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         },
         model: {
           type: 'object',
+          description:
+            'Optional - omit entirely to hire onto the company default Model (preferred unless the role needs a specific one).',
           properties: {
             provider: {
               type: 'string',
@@ -63,13 +65,14 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
             },
             model: {
               type: 'string',
-              description: 'A named Model from Settings > Models (e.g. "coding").',
+              description:
+                'A named Model from Settings > Models. Omit or leave empty to use the company default.',
             },
             effort: { type: 'string', enum: [...MODEL_EFFORTS] },
             thinking_display: { type: 'string', enum: [...THINKING_DISPLAY_MODES] },
             max_tokens: { type: 'number' },
           },
-          required: ['model', 'effort'],
+          required: [],
         },
         tools: {
           type: 'array',
@@ -83,7 +86,7 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         },
         team_id: { type: 'string' },
       },
-      required: ['name', 'title', 'persona', 'system_prompt', 'model'],
+      required: ['name', 'title', 'persona', 'system_prompt'],
       additionalProperties: false,
     },
     async execute(input, ctx) {
@@ -92,9 +95,15 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
       const systemPrompt = str(input, 'system_prompt');
       const persona = record(input, 'persona');
       const modelInput = record(input, 'model');
-      if (!name || !title || !systemPrompt || !persona || !modelInput) {
+      if (!name || !title || !systemPrompt || !persona) {
         return {
-          content: 'hire_agent requires name, title, system_prompt, persona, and model.',
+          content: 'hire_agent requires name, title, system_prompt, and persona.',
+          isError: true,
+        };
+      }
+      if ('model' in input && !modelInput) {
+        return {
+          content: 'hire_agent: model must be an object - or omit it to use the default Model.',
           isError: true,
         };
       }
@@ -111,8 +120,8 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         };
       }
 
-      const provider = str(modelInput, 'provider');
-      const modelId = str(modelInput, 'model');
+      const provider = modelInput ? str(modelInput, 'provider') : undefined;
+      const modelId = modelInput ? str(modelInput, 'model') : undefined;
       // Linked to Settings > Models: agents hire onto a named Model
       // mapping (provider "combo" under the hood). `model.provider` is
       // accepted but must be "combo" (or omitted) - a raw provider
@@ -125,34 +134,47 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
           isError: true,
         };
       }
-      if (!modelId) {
-        return {
-          content: 'hire_agent: model.model is required - a named Model from Settings > Models.',
-          isError: true,
-        };
+      const { modelComboRepo, resolveDefaultModelName } = await import('@katnor/db');
+      let resolvedModelName: string;
+      if (modelId && modelId.trim()) {
+        const named = await modelComboRepo.getByName(modelId.trim());
+        if (!named) {
+          return {
+            content: `hire_agent: no model named "${modelId}" - create it in Settings > Models first.`,
+            isError: true,
+          };
+        }
+        resolvedModelName = named.name;
+      } else {
+        // Omitted or empty: hire onto the company default Model
+        // (company.settings.default_model, else the "default"-named
+        // Model) instead of guessing - e.g. the old schema example.
+        const def = await resolveDefaultModelName();
+        if (!def) {
+          return {
+            content:
+              'hire_agent: no default Model is set and no Model named "default" exists - ' +
+              'set one in Settings > Models or pass model.model explicitly.',
+            isError: true,
+          };
+        }
+        resolvedModelName = def;
       }
-      const { modelComboRepo } = await import('@katnor/db');
-      const named = await modelComboRepo.getByName(modelId.trim());
-      if (!named) {
-        return {
-          content: `hire_agent: no model named "${modelId}" - create it in Settings > Models first.`,
-          isError: true,
-        };
-      }
-      const effort = str(modelInput, 'effort');
-      if (!effort || !(MODEL_EFFORTS as readonly string[]).includes(effort)) {
+      const effortInput = modelInput ? str(modelInput, 'effort') : undefined;
+      const effort = effortInput ?? 'medium';
+      if (!(MODEL_EFFORTS as readonly string[]).includes(effort)) {
         return {
           content: `hire_agent: model.effort must be one of ${MODEL_EFFORTS.join(', ')}.`,
           isError: true,
         };
       }
-      const thinkingDisplayInput = str(modelInput, 'thinking_display');
+      const thinkingDisplayInput = modelInput ? str(modelInput, 'thinking_display') : undefined;
       const thinkingDisplay = (THINKING_DISPLAY_MODES as readonly string[]).includes(
         thinkingDisplayInput ?? '',
       )
         ? thinkingDisplayInput!
         : 'omitted';
-      const maxTokensRaw = modelInput.max_tokens;
+      const maxTokensRaw = modelInput?.max_tokens;
       const maxTokens = typeof maxTokensRaw === 'number' && maxTokensRaw > 0 ? maxTokensRaw : 8192;
 
       const toolsInput = strArray(input, 'tools');
@@ -167,7 +189,7 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         avatar: str(input, 'avatar') ?? 'default',
         model: {
           provider: 'combo',
-          model: modelId,
+          model: resolvedModelName,
           effort,
           thinking_display: thinkingDisplay,
           max_tokens: maxTokens,
@@ -183,7 +205,9 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
       const settings = await companyRepo.getSettings();
       if (settings.approval_policy.hire === 'auto') {
         const created = await createAgentFromPayload(payload);
-        return { content: `Hired ${created.name} (${created.title}), id ${created.id}.` };
+        return {
+          content: `Hired ${created.name} (${created.title}) onto model "${resolvedModelName}", id ${created.id}.`,
+        };
       }
 
       const created = await approvalRepo.create({ run_id: ctx.run.id, kind: 'hire', payload });
@@ -193,7 +217,7 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
       });
       ctx.pauseRequested = { approvalId: created.id };
       return {
-        content: `Hire request for ${name} sent to the owner for approval (pending id ${created.id}). Ending this turn - you'll be re-triggered once decided.`,
+        content: `Hire request for ${name} (model "${resolvedModelName}") sent to the owner for approval (pending id ${created.id}). Ending this turn - you'll be re-triggered once decided.`,
       };
     },
   },
@@ -301,6 +325,73 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         payload: { team_id: created.id, name: created.name },
       });
       return { content: `Created team "${created.name}" (${created.id}).` };
+    },
+  },
+
+  {
+    name: 'delete_team',
+    description:
+      'Delete a team by id or exact name (duplicate names included). Members are unassigned, never fired. Ask the owner which one when several share a name.',
+    ceoOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        team_id: { type: 'string' },
+        name: { type: 'string' },
+      },
+      additionalProperties: false,
+    },
+    async execute(input) {
+      const teamId = str(input, 'team_id');
+      const target = teamId
+        ? await teamRepo.getById(teamId)
+        : str(input, 'name')
+          ? await teamRepo.getByName(str(input, 'name')!)
+          : undefined;
+      if (!target) {
+        return { content: 'delete_team: no such team (give team_id or an exact name).', isError: true };
+      }
+      await teamRepo.remove(target.id);
+      await eventRepo.append({
+        type: 'team.deleted',
+        payload: { team_id: target.id, name: target.name },
+      });
+      return { content: `Deleted team "${target.name}" — members unassigned.` };
+    },
+  },
+
+  {
+    name: 'delete_project',
+    description:
+      'Delete a project by id or exact name with its whole subtree (tasks, runs, channels, wiki rows). Ask the owner which one when several share a name — never pick silently.',
+    ceoOnly: true,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        project_id: { type: 'string' },
+        name: { type: 'string' },
+      },
+      additionalProperties: false,
+    },
+    async execute(input) {
+      const projectId = str(input, 'project_id');
+      const target = projectId
+        ? await projectRepo.getById(projectId)
+        : str(input, 'name')
+          ? await projectRepo.getByName(str(input, 'name')!)
+          : undefined;
+      if (!target) {
+        return {
+          content: 'delete_project: no such project (give project_id or an exact name).',
+          isError: true,
+        };
+      }
+      await projectRepo.remove(target.id);
+      await eventRepo.append({
+        type: 'project.deleted',
+        payload: { project_id: target.id, name: target.name },
+      });
+      return { content: `Deleted project "${target.name}" and its tasks, channels, and wiki rows.` };
     },
   },
 ];

@@ -4,7 +4,7 @@
   import { subscribeToEvents } from '$lib/eventsSocket';
   import { liveStatusStore, type LiveAgentState } from '$lib/office/liveStatus.svelte';
   import ThreeOffice from '$lib/office/ThreeOffice.svelte';
-  import type { RoomAgent } from '$lib/office/threeOffice';
+  import type { FloorId, OfficeScene, RoomAgent } from '$lib/office/threeOffice';
   import { ZONE_HREFS } from '$lib/office/officeLayout';
   import AgentSprite from '$lib/office/AgentSprite.svelte';
   import DecisionPopup from '$lib/office/DecisionPopup.svelte';
@@ -94,6 +94,8 @@
   // ─── Live feed into the room ────────────────────────────────────────
 
   let selectedAgentId = $state<string | null>(null);
+  let officeScene = $state<OfficeScene | null>(null);
+  let orderSent = $state<string | null>(null);
   // Bumped on a 4Hz poll: the store mutates a plain record Svelte cannot
   // track by itself, and live statuses arrive via websocket between
   // renders, so this keeps characters walking and bubbles fresh.
@@ -143,9 +145,29 @@
     chatText = '';
     chatError = null;
     chatSent = false;
+    orderSent = null;
+  }
+
+  const FLOOR_ORDER: { id: FloorId; label: string; icon: string }[] = [
+    { id: 'kitchen', label: 'Kitchen & Dining', icon: '🍽️' },
+    { id: 'rooftop', label: 'Rooftop', icon: '🌇' },
+    { id: 'parking', label: 'Parking', icon: '🅿️' },
+    { id: 'workspace', label: 'Workspace', icon: '💻' },
+  ];
+
+  function sendToFloor(floor: FloorId): void {
+    if (!selectedAgent) return;
+    officeScene?.sendToFloor(selectedAgent.id, floor);
+    orderSent =
+      selectedAgent.id === ceoId
+        ? 'CEO berangkat.'
+        : floor === 'workspace'
+          ? 'Kembali ke meja kerja.'
+          : 'Berjalan ke lift…';
   }
 
   const selectedAgent = $derived(agents.find((a) => a.id === selectedAgentId) ?? null);
+  const ceoId = $derived(agents.find((a) => a.is_system)?.id ?? null);
 
   // ─── Side panel: quick chat ─────────────────────────────────────────
 
@@ -179,6 +201,7 @@
     {selectedAgentId}
     onSelectAgent={handleSelectAgent}
     onSelectZone={handleSelectZone}
+    onScene={(s) => (officeScene = s)}
   />
 
   <!-- Floor-focus pills (top-left) carry the page label; no separate
@@ -199,7 +222,7 @@
     {@const status = liveStatusStore.get(selectedAgent.id)}
     {@const state = liveStateFor(selectedAgent)}
     <div
-      class="absolute bottom-4 right-4 top-4 z-40 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm shadow-xl"
+      class="absolute bottom-4 right-4 top-4 z-40 flex w-80 max-w-[calc(100vw-2rem)] flex-col gap-3 overflow-y-auto rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4 text-sm shadow-xl enter-right"
     >
       <div class="flex items-start justify-between gap-2">
         <div class="flex min-w-0 items-start gap-3">
@@ -248,16 +271,34 @@
           <div class="flex flex-wrap gap-2">
             <a
               href={`/runs?agent=${selectedAgent.id}`}
-              class="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
+              class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
             >
               View trace
             </a>
             <a
               href="/team"
-              class="rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
+              class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
             >
               Edit persona/model
             </a>
+          </div>
+
+          <div class="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-3">
+            <span class="text-xs text-[var(--color-text-muted)]">Kirim ke lantai</span>
+            <div class="flex flex-wrap gap-1.5">
+              {#each FLOOR_ORDER as f (f.id)}
+                <button
+                  type="button"
+                  onclick={() => sendToFloor(f.id)}
+                  class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
+                >
+                  <span aria-hidden="true">{f.icon}</span> {f.label}
+                </button>
+              {/each}
+            </div>
+            {#if orderSent}
+              <p class="text-xs text-[var(--color-success)]">{orderSent}</p>
+            {/if}
           </div>
 
           <form

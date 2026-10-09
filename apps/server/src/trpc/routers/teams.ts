@@ -1,4 +1,4 @@
-import { eventRepo, teamRepo } from '@katnor/db';
+import { agentRepo, eventRepo, teamRepo } from '@katnor/db';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc.js';
 
@@ -16,5 +16,23 @@ export const teamsRouter = router({
         payload: { team_id: created.id, name: created.name },
       });
       return created;
+    }),
+
+  /**
+   * Owner-only hard delete (member `team_id` → null, team channels + their
+   * messages dropped — nobody is fired). Agents reach the same outcome
+   * through the CEO-only `delete_team` tool, not this HTTP surface.
+   */
+  delete: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ input }) => {
+      const existing = await teamRepo.getById(input.id);
+      if (!existing) return undefined;
+      await teamRepo.remove(input.id);
+      await eventRepo.append({
+        type: 'team.deleted',
+        payload: { team_id: existing.id, name: existing.name },
+      });
+      return { id: existing.id };
     }),
 });

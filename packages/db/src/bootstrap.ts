@@ -63,6 +63,8 @@ const CEO_TOOL_ALLOWLIST = [
   'update_agent',
   'fire_agent',
   'create_team',
+  'delete_team',
+  'delete_project',
   'send_message',
   'read_channel',
   'ask_colleague',

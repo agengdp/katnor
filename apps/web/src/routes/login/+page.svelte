@@ -22,7 +22,7 @@
   }
 </script>
 
-<div class="mx-auto flex max-w-sm flex-col gap-6 pt-12">
+<div class="enter mx-auto flex max-w-sm flex-col gap-6 pt-12">
   <div>
     <h1 class="flex items-center gap-2 text-2xl font-semibold">
       <Icon name="lock" size="0.9em" />

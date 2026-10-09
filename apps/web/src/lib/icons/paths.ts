@@ -53,6 +53,7 @@ export type IconName =
   | 'messageSquare'
   | 'menu'
   | 'pencil'
+  | 'plus'
   | 'presentation'
   | 'pullRequest'
   | 'replyArrow'
@@ -180,6 +181,8 @@ export const ICON_PATHS: Record<IconName, readonly string[]> = {
   menu: ['M4 6H20', 'M4 12H20', 'M4 18H20'],
 
   pencil: ['M17 3L21 7L8 20H4V16L17 3Z', 'M14.5 5.5L18.5 9.5'],
+
+  plus: ['M12 5V19', 'M5 12H19'],
 
   presentation: [
     'M3 4H21',

@@ -198,6 +198,16 @@
         push(agentName(id), 'meninggalkan kantor', id);
         return;
       }
+      case 'team.deleted': {
+        const name = str(p, 'name');
+        push(name ?? 'Kantor', 'sebuah tim dibubarkan', null);
+        return;
+      }
+      case 'project.deleted': {
+        const name = str(p, 'name');
+        push(name ?? 'Kantor', 'sebuah project dihapus', null);
+        return;
+      }
       case 'chatter.limited': {
         const id = str(p, 'author_id');
         push(agentName(id), 'dihentikan sebentar (terlalu banyak mengobrol)', id);
@@ -282,7 +292,7 @@
 
 {#if open}
   <div
-    class="absolute bottom-4 top-4 z-20 flex w-96 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl {shifted
+    class="absolute bottom-4 top-4 z-20 flex w-96 max-w-[calc(100vw-2rem)] flex-col overflow-hidden rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] shadow-xl enter-right {shifted
       ? 'right-[21rem]'
       : 'right-4'}"
   >

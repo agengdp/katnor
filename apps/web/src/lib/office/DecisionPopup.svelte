@@ -115,7 +115,7 @@
 
 {#if current}
   <div
-    class="absolute bottom-4 left-1/2 z-30 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border border-[var(--color-accent)] bg-[var(--color-surface)] shadow-2xl"
+    class="absolute bottom-4 left-1/2 z-30 w-[26rem] max-w-[calc(100vw-2rem)] -translate-x-1/2 overflow-hidden rounded-lg border border-[var(--color-accent)] bg-[var(--color-surface)] shadow-2xl enter-up"
     role="alertdialog"
     aria-label="Keputusan dibutuhkan"
   >

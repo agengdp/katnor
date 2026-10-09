@@ -2,6 +2,7 @@
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents } from '$lib/eventsSocket';
   import ApprovalCard from '$lib/approval/ApprovalCard.svelte';
+  import { Icon } from '$lib/icons';
   import type { ApprovalKind, ApprovalStatus } from '@katnor/core';
 
   // Local mirrors of apps/server's tRPC row shapes (packages/db's Drizzle
@@ -140,6 +141,7 @@
   function selectChannel(channel: ChannelRow, label: string) {
     if (selectedChannel?.id === channel.id) return;
     selectedChannel = channel;
+    stickToBottom = true;
     selectedLabel = label;
     composerText = '';
     selectedMentionIds = [];
@@ -317,6 +319,29 @@
   let decideErrors = $state<Record<string, string>>({});
   let pendingCount = $derived(approvals.filter((a) => a.status === 'pending').length);
 
+  // Thread autoscroll: new messages stick to the bottom unless the reader
+  // scrolled up into history (an 80px gap breaks the stick). Jumps are
+  // instant - chat updates constantly, so smooth scrolling would lag behind
+  // live traffic and fight the user.
+  let threadEl = $state<HTMLElement | null>(null);
+  let stickToBottom = $state(true);
+
+  function onThreadScroll(): void {
+    const el = threadEl;
+    if (!el) return;
+    stickToBottom = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+  }
+
+  $effect(() => {
+    void threadItems.length;
+    void selectedChannel?.id;
+    const el = threadEl;
+    if (!el || !stickToBottom) return;
+    requestAnimationFrame(() => {
+      if (threadEl === el && stickToBottom) el.scrollTop = el.scrollHeight;
+    });
+  });
+
   async function loadApprovals() {
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -425,7 +450,7 @@
                 type="button"
                 onclick={() => selectChannel(general, '# general')}
                 title="general"
-                class="truncate rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors {channel.id ===
+                class="truncate rounded-md px-3 py-1.5 text-left text-sm font-medium {channel.id ===
                 general.id
                   ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
                   : 'hover:bg-[var(--color-surface-muted)]'}"
@@ -438,7 +463,7 @@
                 type="button"
                 onclick={() => selectChannel(entry.channel, `# ${entry.project.name}`)}
                 title={entry.project.name}
-                class="truncate rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors {channel.id ===
+                class="truncate rounded-md px-3 py-1.5 text-left text-sm font-medium {channel.id ===
                 entry.channel.id
                   ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
                   : 'hover:bg-[var(--color-surface-muted)]'}"
@@ -463,7 +488,7 @@
                 onclick={() => openDm(agent)}
                 disabled={openingDmAgentId === agent.id}
                 title={agent.name}
-                class="flex items-center gap-2 truncate rounded-md px-3 py-1.5 text-left text-sm font-medium transition-colors disabled:opacity-50 {isDmSelected(
+                class="flex items-center gap-2 truncate rounded-md px-3 py-1.5 text-left text-sm font-medium disabled:opacity-50 {isDmSelected(
                   agent,
                 )
                   ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
@@ -496,7 +521,7 @@
             <button
               type="button"
               onclick={() => selectChannel(general, '# general')}
-              class="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-medium transition-colors {channel.id ===
+              class="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-medium {channel.id ===
               general.id
                 ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
                 : 'border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'}"
@@ -508,7 +533,7 @@
             <button
               type="button"
               onclick={() => selectChannel(entry.channel, `# ${entry.project.name}`)}
-              class="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-medium transition-colors {channel.id ===
+              class="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-medium {channel.id ===
               entry.channel.id
                 ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
                 : 'border-[var(--color-border)] hover:bg-[var(--color-surface-muted)]'}"
@@ -521,7 +546,7 @@
               type="button"
               onclick={() => openDm(agent)}
               disabled={openingDmAgentId === agent.id}
-              class="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-medium transition-colors disabled:opacity-50 {isDmSelected(
+              class="shrink-0 whitespace-nowrap rounded-full border px-3 py-1.5 text-sm font-medium disabled:opacity-50 {isDmSelected(
                 agent,
               )
                 ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
@@ -548,6 +573,8 @@
           </div>
 
           <div
+            bind:this={threadEl}
+            onscroll={onThreadScroll}
             class="flex min-h-0 flex-1 flex-col divide-y divide-[var(--color-border)] overflow-y-auto px-4"
           >
             {#if messagesLoading}
@@ -573,7 +600,7 @@
               {#each threadItems as item (item.kind === 'message' ? item.message.id : item.approval.id)}
                 {#if item.kind === 'message'}
                   {@const m = item.message}
-                  <div class="flex flex-col gap-1 py-3">
+                  <div class="flex flex-col gap-1 py-3 msg-in">
                     <div class="flex flex-wrap items-baseline gap-2">
                       <span class="text-sm font-semibold">{authorLabel(m)}</span>
                       <span class="text-xs text-[var(--color-text-muted)]"
@@ -589,7 +616,7 @@
                   </div>
                 {:else}
                   {@const row = item.approval}
-                  <div class="flex flex-col gap-1 py-3">
+                  <div class="flex flex-col gap-1 py-3 msg-in">
                     <div class="flex flex-wrap items-baseline gap-2">
                       <span class="text-sm font-semibold">{approvalAuthor(row)}</span>
                       <span class="text-xs text-[var(--color-text-muted)]"
@@ -624,7 +651,7 @@
                   <button
                     type="button"
                     onclick={() => toggleMention(agent.id)}
-                    class="shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium transition-colors {selectedMentionIds.includes(
+                    class="shrink-0 whitespace-nowrap rounded-full border px-2 py-0.5 text-xs font-medium {selectedMentionIds.includes(
                       agent.id,
                     )
                       ? 'border-[var(--color-accent)] bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
@@ -653,8 +680,9 @@
               <button
                 type="submit"
                 disabled={sending || composerText.trim() === ''}
-                class="w-full shrink-0 rounded-md bg-[var(--color-accent)] px-4 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50 sm:w-auto"
+                class="inline-flex w-full shrink-0 items-center justify-center gap-1.5 rounded-md bg-[var(--color-accent)] px-4 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50 sm:w-auto"
               >
+                <Icon name="replyArrow" />
                 {sending ? 'Sending…' : 'Send'}
               </button>
             </form>

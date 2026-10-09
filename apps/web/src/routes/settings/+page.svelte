@@ -929,7 +929,7 @@
   </div>
 
   {#if activeTab === 'providers'}
-  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Providers">
+  <div class="flex flex-col gap-4 enter" role="tabpanel" aria-label="Providers">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">Providers</h2>
       <button
@@ -1194,7 +1194,7 @@
   {/if}
 
   {#if activeTab === 'mcp'}
-  <div class="flex flex-col gap-4" role="tabpanel" aria-label="MCP servers">
+  <div class="flex flex-col gap-4 enter" role="tabpanel" aria-label="MCP servers">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">MCP servers</h2>
       <button
@@ -1327,7 +1327,7 @@
   {/if}
 
   {#if activeTab === 'secrets'}
-  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Secrets">
+  <div class="flex flex-col gap-4 enter" role="tabpanel" aria-label="Secrets">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">Secrets</h2>
       <button
@@ -1409,7 +1409,7 @@
   {/if}
 
   {#if activeTab === 'budgets'}
-  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Budgets and approval policy">
+  <div class="flex flex-col gap-4 enter" role="tabpanel" aria-label="Budgets and approval policy">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">Budgets & approval policy</h2>
       <button
@@ -1542,7 +1542,7 @@
   {/if}
 
   {#if activeTab === 'backups'}
-  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Backups">
+  <div class="flex flex-col gap-4 enter" role="tabpanel" aria-label="Backups">
     <p class="text-sm text-[var(--color-text-muted)]">
       Downloads a single JSON file with every core table (company, teams, agents, projects, tasks,
       runs, messages, the knowledge graph, wiki pages, ...) plus every project's wiki files.
@@ -1562,7 +1562,7 @@
   {/if}
 
   {#if activeTab === 'account'}
-  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Account">
+  <div class="flex flex-col gap-4 enter" role="tabpanel" aria-label="Account">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">Account</h2>
       <button
@@ -1669,7 +1669,7 @@
   {/if}
 
   {#if activeTab === 'models'}
-  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Models">
+  <div class="flex flex-col gap-4 enter" role="tabpanel" aria-label="Models">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">Models</h2>
       <button

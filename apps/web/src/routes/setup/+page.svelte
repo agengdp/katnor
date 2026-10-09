@@ -232,7 +232,7 @@ pnpm --filter @katnor/db db:post-migrate</pre>
       </a>
     </div>
   {:else}
-    <div>
+    <div class="enter">
       <h1 class="text-2xl font-semibold">Set up Katnor</h1>
       <p class="mt-1 text-sm text-[var(--color-text-muted)]">
         Three short steps. Nothing is saved until the last one.

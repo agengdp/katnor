@@ -5,6 +5,7 @@
   import { dndzone } from 'svelte-dnd-action';
   import { flip } from 'svelte/animate';
   import { Icon } from '$lib/icons';
+  import Modal from '$lib/ui/Modal.svelte';
 
   // Local mirrors of apps/server's Row shapes. Timestamps are plain ISO
   // strings on the wire (no superjson transformer), not Date objects, even
@@ -105,6 +106,18 @@
   let newAssigneeId = $state('');
   let creatingTask = $state(false);
   let createTaskError = $state<string | null>(null);
+  let taskModalOpen = $state(false);
+
+  function openTaskModal(): void {
+    createTaskError = null;
+    taskModalOpen = true;
+  }
+
+  function closeTaskModal(): void {
+    if (creatingTask) return;
+    taskModalOpen = false;
+    createTaskError = null;
+  }
 
   const flipDurationMs = 150;
   const dndType = 'kanban-task';
@@ -314,6 +327,7 @@
       newAcceptanceCriteria = '';
       newPriority = 'medium';
       newAssigneeId = '';
+      taskModalOpen = false;
       await refreshTasks();
     } catch (err) {
       createTaskError = describeError(err);
@@ -354,23 +368,7 @@
       </p>
     </div>
   {:else}
-    <div class="flex flex-col gap-1">
-      <h1 class="text-2xl font-semibold">{project.name}</h1>
-      {#if project.description}
-        <p class="text-[var(--color-text-muted)]">{project.description}</p>
-      {/if}
-    </div>
-
-    {#if actionError}
-      <p class="text-sm text-[var(--color-danger)]">{actionError}</p>
-    {/if}
-
-    <section
-      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-    >
-      <h2 class="text-sm font-semibold">
-        Add task <span class="font-normal text-[var(--color-text-muted)]">(goes to Backlog)</span>
-      </h2>
+    <Modal open={taskModalOpen} title="New task" onclose={closeTaskModal}>
       <form class="flex flex-col gap-3" onsubmit={createTask}>
         <div class="grid gap-3 sm:grid-cols-2">
           <label class="flex flex-col gap-1 text-sm">
@@ -431,17 +429,46 @@
           <p class="text-sm text-[var(--color-danger)]">{createTaskError}</p>
         {/if}
 
-        <div>
+        <div class="flex items-center justify-end gap-2">
+          <button
+            type="button"
+            onclick={closeTaskModal}
+            disabled={creatingTask}
+            class="btn-press rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+          >
+            Cancel
+          </button>
           <button
             type="submit"
             disabled={creatingTask}
-            class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+            class="btn-press rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
           >
             {creatingTask ? 'Adding…' : 'Add task'}
           </button>
         </div>
       </form>
-    </section>
+    </Modal>
+
+    <div class="flex items-start justify-between gap-3">
+      <div class="flex min-w-0 flex-col gap-1">
+        <h1 class="truncate text-2xl font-semibold">{project.name}</h1>
+        {#if project.description}
+          <p class="text-[var(--color-text-muted)]">{project.description}</p>
+        {/if}
+      </div>
+      <button
+        type="button"
+        onclick={openTaskModal}
+        class="btn-press flex shrink-0 items-center gap-1.5 rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)]"
+      >
+        <Icon name="plus" size="1em" />
+        New task
+      </button>
+    </div>
+
+    {#if actionError}
+      <p class="text-sm text-[var(--color-danger)]">{actionError}</p>
+    {/if}
 
     <div class="overflow-x-auto">
       <div class="flex items-start gap-4 pb-2">

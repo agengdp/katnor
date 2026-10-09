@@ -201,14 +201,15 @@
   {:else}
     <div class="flex min-h-0 flex-1 flex-col gap-4 sm:flex-row">
       <div class="flex w-full flex-col gap-2 sm:w-80 sm:shrink-0">
-        {#each filtered as row (row.id)}
+        {#each filtered as row, i (row.id)}
           <button
             type="button"
             onclick={() => selectArtifact(row)}
-            class="flex flex-col gap-1 rounded-lg border p-3 text-left text-sm transition-colors {selected?.id ===
+            class="enter flex flex-col gap-1 rounded-lg border p-3 text-left text-sm {selected?.id ===
             row.id
               ? 'border-[var(--color-accent)] bg-[var(--color-surface-muted)]'
               : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'}"
+            style="--enter-i: {Math.min(i, 8)}"
           >
             <div class="flex items-center gap-2">
               <Icon name={kindIcons[row.kind]} />
@@ -231,13 +232,21 @@
         {:else}
           <div class="flex flex-col gap-3">
             <div class="flex flex-wrap items-center justify-between gap-2">
-              <h2 class="text-lg font-semibold">{selected.title}</h2>
+              <div class="flex min-w-0 flex-wrap items-center gap-2">
+                <span
+                  class="inline-flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-border)] px-2 py-0.5 text-xs font-medium capitalize text-[var(--color-text-muted)]"
+                >
+                  <Icon name={kindIcons[selected.kind]} />
+                  {selected.kind} · v{selected.version}
+                </span>
+                <h2 class="truncate text-lg font-semibold">{selected.title}</h2>
+              </div>
               {#if previewUrl}
                 <a
                   href={previewUrl}
                   target="_blank"
                   rel="noreferrer"
-                  class="inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+                  class="btn-press inline-flex items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
                 >
                   Open raw
                   <Icon name="externalLink" />

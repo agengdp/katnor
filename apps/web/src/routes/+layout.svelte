@@ -192,7 +192,7 @@
 {:else}
   <div class="flex min-h-screen flex-col bg-[var(--color-bg)] text-[var(--color-text)]">
     <header
-      class="flex items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5"
+      class="sticky top-0 z-40 flex items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5"
     >
       <a href="/" class="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
         <Icon name="factory" size="1.1em" />
@@ -210,7 +210,7 @@
           size="0.75em"
           class={overBudget ? 'text-[var(--color-danger)]' : 'text-[var(--color-success)]'}
         />
-        <span>
+        <span class="tabular-nums">
           {#if spend === null}
             $0.00
           {:else}
@@ -247,14 +247,14 @@
 
       <nav
         aria-label="Main"
-        class="flex shrink-0 items-stretch justify-start gap-1 overflow-x-auto border-t border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 sm:justify-center"
+        class="sticky bottom-0 z-40 flex shrink-0 items-stretch justify-start gap-1 overflow-x-auto border-t border-[var(--color-border)] bg-[var(--color-surface)] px-2 pt-1.5 pb-[calc(0.375rem+env(safe-area-inset-bottom))] sm:justify-center"
       >
         {#each navLinks as link (link.href)}
           <a
             href={link.href}
             aria-current={isActive(link.href) ? 'page' : undefined}
             title={link.label}
-            class="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors {isActive(
+            class="btn-press flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium {isActive(
               link.href,
             )
               ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'

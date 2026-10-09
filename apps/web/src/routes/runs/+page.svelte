@@ -569,15 +569,16 @@
           <p class="text-xs text-[var(--color-danger)]">Couldn't refresh the list: {runsError}</p>
         {/if}
         <div class="flex flex-col gap-2">
-          {#each runs as r (r.id)}
+          {#each runs as r, i (r.id)}
             {@const duration = formatDuration(r.started_at, r.finished_at)}
             {@const isSelected = r.id === selectedRunId}
             <button
               type="button"
               onclick={() => selectRun(r.id)}
-              class="flex flex-col gap-1.5 rounded-lg border p-3 text-left transition-colors {isSelected
+              class="enter flex flex-col gap-1.5 rounded-lg border p-3 text-left transition-colors {isSelected
                 ? 'border-[var(--color-accent)] bg-[var(--color-surface-muted)]'
                 : 'border-[var(--color-border)] bg-[var(--color-surface)] hover:bg-[var(--color-surface-muted)]'}"
+              style="--enter-i: {Math.min(i, 8)}"
             >
               <div class="flex items-center justify-between gap-2">
                 <span class="truncate font-medium">{agentName(r.agent_id)}</span>
