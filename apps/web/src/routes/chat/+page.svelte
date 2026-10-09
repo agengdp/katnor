@@ -1,6 +1,8 @@
 <script lang="ts">
   import { trpc } from '$lib/trpc';
   import { subscribeToEvents } from '$lib/eventsSocket';
+  import ApprovalCard from '$lib/approval/ApprovalCard.svelte';
+  import type { ApprovalKind, ApprovalStatus } from '@katnor/core';
 
   // Local mirrors of apps/server's tRPC row shapes (packages/db's Drizzle
   // `$inferSelect` types). apps/web doesn't depend on @katnor/db directly
@@ -265,11 +267,88 @@
     }
   }
 
-  // Runs once on mount: the call itself is async, so nothing reactive is
-  // read synchronously inside this effect and it won't re-run afterwards
-  // (same pattern as apps/web/src/routes/settings/+page.svelte).
+  // ─── Thread: messages + inline approvals ────────────────────────
+  // Pending approvals render inside the thread as the asking agent's
+  // message (sorted by created_at among real messages), not in a panel
+  // above it - deciding happens in the flow of conversation. Only
+  // approvals for the open channel show (matched via run.channel_id;
+  // channel-less ones surface in every thread so they're never hidden).
+  type ThreadItem =
+    | { kind: 'message'; at: number; message: MessageRow }
+    | { kind: 'approval'; at: number; approval: ApprovalRow };
+
+  function approvalAuthor(row: ApprovalRow): string {
+    if (row.agent_id) return agentName(row.agent_id);
+    return 'Agent';
+  }
+
+  let threadItems = $derived.by(() => {
+    const items: ThreadItem[] = messages.map((message) => ({
+      kind: 'message' as const,
+      at: new Date(message.created_at).getTime() || 0,
+      message,
+    }));
+    for (const approval of approvals) {
+      if (approval.channel_id && selectedChannel && approval.channel_id !== selectedChannel.id)
+        continue;
+      items.push({
+        kind: 'approval' as const,
+        at: new Date(approval.created_at).getTime() || 0,
+        approval,
+      });
+    }
+    items.sort((a, b) => a.at - b.at);
+    return items;
+  });
+  interface ApprovalRow {
+    id: string;
+    created_at: string;
+    run_id: string;
+    kind: ApprovalKind;
+    payload: Record<string, unknown>;
+    status: ApprovalStatus;
+    /** The asking agent + channel (server joins via run) - null when unknown. */
+    agent_id: string | null;
+    channel_id: string | null;
+  }
+
+  let approvals = $state<ApprovalRow[]>([]);
+  let decidingIds = $state<Record<string, boolean>>({});
+  let decideErrors = $state<Record<string, string>>({});
+  let pendingCount = $derived(approvals.filter((a) => a.status === 'pending').length);
+
+  async function loadApprovals() {
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const remote: any[] = await trpc().approvals.list.query({});
+      approvals = (remote as ApprovalRow[]).filter((a) => a.status === 'pending');
+    } catch {
+      // Non-fatal - the panel just stays empty until the next refresh.
+    }
+  }
+
+  async function decideApproval(
+    row: ApprovalRow,
+    decision: 'approved' | 'rejected',
+    answer?: string,
+  ) {
+    decidingIds[row.id] = true;
+    decideErrors[row.id] = '';
+    try {
+      const input =
+        answer === undefined ? { id: row.id, decision } : { id: row.id, decision, answer };
+      await trpc().approvals.decide.mutate(input);
+      approvals = approvals.filter((a) => a.id !== row.id);
+    } catch (err) {
+      decideErrors[row.id] = describeError(err);
+    } finally {
+      decidingIds[row.id] = false;
+    }
+  }
+
   $effect(() => {
     loadSidebar();
+    loadApprovals();
   });
 
   // Live updates: re-fetch the open channel's thread whenever the event bus
@@ -279,18 +358,23 @@
   // dependency, so this subscribes exactly once for the life of the page.
   $effect(() => {
     const unsubscribe = subscribeToEvents((event) => {
-      if (event.type !== 'message.posted') return;
-      if (!selectedChannel) return;
-      const rawChannelId = event.payload.channel_id;
-      const eventChannelId = typeof rawChannelId === 'string' ? rawChannelId : undefined;
-      if (eventChannelId && eventChannelId !== selectedChannel.id) return;
-      loadMessages(selectedChannel.id, { silent: true });
+      if (event.type === 'message.posted') {
+        if (!selectedChannel) return;
+        const rawChannelId = event.payload.channel_id;
+        const eventChannelId = typeof rawChannelId === 'string' ? rawChannelId : undefined;
+        if (eventChannelId && eventChannelId !== selectedChannel.id) return;
+        loadMessages(selectedChannel.id, { silent: true });
+        return;
+      }
+      if (event.type === 'approval.requested' || event.type === 'approval.decided') {
+        loadApprovals();
+      }
     });
     return unsubscribe;
   });
 </script>
 
-<div class="mx-auto flex h-[min(70vh,42rem)] min-h-[24rem] w-full max-w-6xl flex-col gap-4">
+<div class="mx-auto flex h-[min(70vh,42rem)] min-h-[24rem] w-full max-w-6xl flex-col gap-4 p-4 sm:p-6">
   <div>
     <h1 class="text-2xl font-semibold">Chat</h1>
     <p class="mt-1 text-sm text-[var(--color-text-muted)]">
@@ -481,26 +565,49 @@
                   Retry
                 </button>
               </div>
-            {:else if messages.length === 0}
+            {:else if threadItems.length === 0}
               <p class="py-6 text-center text-sm text-[var(--color-text-muted)]">
                 No messages yet - say hello.
               </p>
             {:else}
-              {#each messages as m (m.id)}
-                <div class="flex flex-col gap-1 py-3">
-                  <div class="flex flex-wrap items-baseline gap-2">
-                    <span class="text-sm font-semibold">{authorLabel(m)}</span>
-                    <span class="text-xs text-[var(--color-text-muted)]"
-                      >{formatTime(m.created_at)}</span
-                    >
+              {#each threadItems as item (item.kind === 'message' ? item.message.id : item.approval.id)}
+                {#if item.kind === 'message'}
+                  {@const m = item.message}
+                  <div class="flex flex-col gap-1 py-3">
+                    <div class="flex flex-wrap items-baseline gap-2">
+                      <span class="text-sm font-semibold">{authorLabel(m)}</span>
+                      <span class="text-xs text-[var(--color-text-muted)]"
+                        >{formatTime(m.created_at)}</span
+                      >
+                    </div>
+                    <p class="whitespace-pre-wrap break-words text-sm">{m.content}</p>
+                    {#if m.mentions.length > 0}
+                      <p class="text-xs text-[var(--color-text-muted)]">
+                        {formatMentions(m.mentions)}
+                      </p>
+                    {/if}
                   </div>
-                  <p class="whitespace-pre-wrap break-words text-sm">{m.content}</p>
-                  {#if m.mentions.length > 0}
-                    <p class="text-xs text-[var(--color-text-muted)]">
-                      {formatMentions(m.mentions)}
-                    </p>
-                  {/if}
-                </div>
+                {:else}
+                  {@const row = item.approval}
+                  <div class="flex flex-col gap-1 py-3">
+                    <div class="flex flex-wrap items-baseline gap-2">
+                      <span class="text-sm font-semibold">{approvalAuthor(row)}</span>
+                      <span class="text-xs text-[var(--color-text-muted)]"
+                        >{formatTime(row.created_at)}</span
+                      >
+                      <span
+                        class="rounded-full border border-[var(--color-accent)] px-2 py-0.5 text-xs font-medium text-[var(--color-accent)]"
+                        >needs your decision</span
+                      >
+                    </div>
+                    <ApprovalCard
+                      row={row}
+                      deciding={decidingIds[row.id]}
+                      error={decideErrors[row.id] ?? ''}
+                      onDecide={(decision, answer) => decideApproval(row, decision, answer)}
+                    />
+                  </div>
+                {/if}
               {/each}
             {/if}
           </div>

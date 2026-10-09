@@ -1,0 +1,1 @@
+ALTER TABLE "model_combo" ADD COLUMN IF NOT EXISTS "strategy" text DEFAULT 'fallback' NOT NULL;

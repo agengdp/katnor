@@ -51,6 +51,7 @@ export type IconName =
   | 'logOut'
   | 'messageCircle'
   | 'messageSquare'
+  | 'menu'
   | 'pencil'
   | 'presentation'
   | 'pullRequest'
@@ -175,6 +176,8 @@ export const ICON_PATHS: Record<IconName, readonly string[]> = {
   messageSquare: [
     'M4 4H20A1 1 0 0 1 21 5V15A1 1 0 0 1 20 16H9L5 20V16H4A1 1 0 0 1 3 15V5A1 1 0 0 1 4 4Z',
   ],
+
+  menu: ['M4 6H20', 'M4 12H20', 'M4 18H20'],
 
   pencil: ['M17 3L21 7L8 20H4V16L17 3Z', 'M14.5 5.5L18.5 9.5'],
 

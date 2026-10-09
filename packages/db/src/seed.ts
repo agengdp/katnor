@@ -37,23 +37,21 @@ async function main() {
   );
   console.log(`[seed] #general channel ready: (${result.generalChannelId})`);
 
-  // The very first user account: a chicken-and-egg problem otherwise,
-  // since creating one through the dashboard requires already being
-  // logged in. Every account after this one is created by an
-  // already-logged-in user through Settings > Team members.
+  // The single user account: a chicken-and-egg problem otherwise,
+  // since the dashboard requires already being logged in. Single-user
+  // install, so this one account is the only one there will ever be -
+  // Settings only changes its passcode afterwards.
   if (!(await needsSetup())) {
     console.log('[seed] a user account already exists - skipping owner bootstrap.');
   } else {
-    const ownerEmail = process.env.OWNER_EMAIL?.trim();
-    const ownerPasswordHash = process.env.OWNER_PASSWORD_HASH?.trim();
-    if (ownerEmail && ownerPasswordHash) {
+    const ownerPasscodeHash = process.env.OWNER_PASSCODE_HASH?.trim();
+    if (ownerPasscodeHash) {
       try {
         const owner = await createFirstUserWithPasswordHash({
           name: process.env.OWNER_NAME?.trim() || 'Owner',
-          email: ownerEmail,
-          passwordHash: ownerPasswordHash,
+          passwordHash: ownerPasscodeHash,
         });
-        console.log(`[seed] created first user account: ${owner.email} (${owner.id})`);
+        console.log(`[seed] created single user account: ${owner.name} (${owner.id})`);
       } catch (err) {
         // Only reachable if an account appeared between the check above
         // and the insert - e.g. somebody completing the browser wizard at
@@ -64,8 +62,8 @@ async function main() {
       }
     } else {
       console.warn(
-        '[seed] OWNER_EMAIL and/or OWNER_PASSWORD_HASH are not set - no user account created. ' +
-          'Nobody can log in until one exists. Either set both in .env and re-run db:seed, or ' +
+        '[seed] OWNER_PASSCODE_HASH is not set - no user account created. ' +
+          'Nobody can log in until one exists. Either set it in .env and re-run db:seed, or ' +
           'just open the dashboard in a browser and complete the setup wizard, which creates ' +
           'the same account without needing a pre-computed hash.',
       );

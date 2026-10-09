@@ -4,29 +4,45 @@
     MODEL_COMBO_ENTRY_PROVIDERS,
     type ApprovalMode,
     type ModelComboEntryProvider,
+    type ModelStrategy,
     type ToolConfigKind,
   } from '@katnor/core';
   import { serverOrigin, trpc } from '$lib/trpc';
 
-  type ProviderRow = {
+  type ProviderConnection = {
+    id: string;
+    name: string;
     provider: ModelComboEntryProvider;
     hasKey: boolean;
-    baseUrl: string;
+    baseUrl: string | null;
     enabled: boolean;
-    // Draft-only input; the server never sends a real key back, so this
+  };
+
+  type ProviderRow = ProviderConnection & {
+    // Draft-only inputs; the server never sends a real key back, so apiKey
     // always starts empty and is cleared again after a successful save.
     apiKey: string;
+    baseUrlDraft: string;
+    nameDraft: string;
     // Optional $/MTok rates (@katnor/db's schema/providerConfig.ts) - kept
     // as text-input strings, same as apiKey/baseUrl above, rather than
-    // numbers, so an in-progress edit (or a deliberately blank/unset rate)
-    // isn't fought by number-input coercion. Meaningless for "anthropic"
-    // (priced from @katnor/llm's own pricing.ts table) - not rendered for
-    // that row, see the markup below.
+    // numbers, so an in-progress edit isn't fought by number-input
+    // coercion. Meaningless for "anthropic" (priced from @katnor/llm's
+    // own pricing.ts table) - not rendered for that row.
     inputCostPerMtok: string;
     outputCostPerMtok: string;
     saving: boolean;
     saveError: string | null;
     justSaved: boolean;
+    removing: boolean;
+    // Fetched model list for this connection (Zed-style). `null` =
+    // never fetched; `modelsLoading` guards the Refresh button.
+    models: { id: string; display_name: string }[] | null;
+    modelsLoading: boolean;
+    modelsError: string | null;
+    // Card collapsed (shrink) vs expanded. Default collapsed so a long
+    // connection list scans fast; expands on demand per card.
+    collapsed: boolean;
   };
 
   const providerLabels: Record<ModelComboEntryProvider, string> = {
@@ -45,67 +61,116 @@
   };
 
   // Note: "combo" (@katnor/core's MODEL_PROVIDERS) is deliberately absent
-  // from both maps above and from the connection rows below - it isn't a
-  // real backend with its own base_url/api_key, just a named fallback
-  // chain across the providers listed here. It gets its own "Model
-  // Combos" section further down this page instead.
+  // from both maps below - it isn't a real backend with its own
+  // base_url/api_key, just a named Model mapping across the connections
+  // listed here. It gets its own "Models" section further down this page.
 
-  function emptyRow(provider: ModelComboEntryProvider): ProviderRow {
+  function toRow(remote: {
+    id: string;
+    name: string;
+    provider: ModelComboEntryProvider;
+    hasKey: boolean;
+    baseUrl: string | null;
+    enabled: boolean;
+    inputCostPerMtok: number | null;
+    outputCostPerMtok: number | null;
+  }): ProviderRow {
     return {
-      provider,
-      hasKey: false,
-      baseUrl: '',
-      // Anthropic is the one provider PLAN.md calls required, so default it
-      // to enabled; the rest start off until someone fills them in.
-      enabled: provider === 'anthropic',
+      id: remote.id,
+      name: remote.name,
+      provider: remote.provider,
+      hasKey: Boolean(remote.hasKey),
+      baseUrl: remote.baseUrl,
+      enabled: Boolean(remote.enabled),
       apiKey: '',
-      inputCostPerMtok: '',
-      outputCostPerMtok: '',
+      baseUrlDraft: remote.baseUrl ?? '',
+      nameDraft: remote.name,
+      inputCostPerMtok:
+        remote.inputCostPerMtok != null ? String(remote.inputCostPerMtok) : '',
+      outputCostPerMtok:
+        remote.outputCostPerMtok != null ? String(remote.outputCostPerMtok) : '',
       saving: false,
       saveError: null,
       justSaved: false,
+      removing: false,
+      models: null,
+      modelsLoading: false,
+      modelsError: null,
+      collapsed: true,
     };
   }
 
-  let rows = $state<ProviderRow[]>(MODEL_COMBO_ENTRY_PROVIDERS.map(emptyRow));
+  let rows = $state<ProviderRow[]>([]);
   let loading = $state(true);
   let loadError = $state<string | null>(null);
+
+  // New-connection form: pick a type first ("tambah provider apa"),
+  // then fill the connection detail - one type can back many connections.
+  let newProviderType = $state<ModelComboEntryProvider>('openai_compatible');
+  let newProviderName = $state('');
+  let newProviderKey = $state('');
+  let newProviderBaseUrl = $state('');
+  let newProviderEnabled = $state(true);
+  let creatingProvider = $state(false);
+  let createProviderError = $state<string | null>(null);
 
   function describeError(err: unknown): string {
     if (err instanceof Error && err.message) return err.message;
     return 'Something went wrong talking to the server.';
   }
 
+  // ─── Tabs ───────────────────────────────────────────────────────────
+
+  type SettingsTabId =
+    | 'providers'
+    | 'models'
+    | 'mcp'
+    | 'secrets'
+    | 'budgets'
+    | 'backups'
+    | 'account';
+
+  const TABS: { id: SettingsTabId; label: string }[] = [
+    { id: 'providers', label: 'Providers' },
+    { id: 'models', label: 'Models' },
+    { id: 'mcp', label: 'MCP servers' },
+    { id: 'secrets', label: 'Secrets' },
+    { id: 'budgets', label: 'Budgets & approvals' },
+    { id: 'backups', label: 'Backups' },
+    { id: 'account', label: 'Account' },
+  ];
+
+  let activeTab = $state<SettingsTabId>('providers');
+
   async function loadProviders() {
     loading = true;
     loadError = null;
     try {
-      const client = trpc();
-      // Expected shape (see PLAN.md / this phase's task):
-      // Array<{ provider, hasKey: boolean, baseUrl: string | null, enabled: boolean }>
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      const remote: any[] = await client.settings.listProviders.query();
-      const remoteByProvider = new Map(remote.map((row) => [row.provider, row]));
-
-      rows = MODEL_COMBO_ENTRY_PROVIDERS.map((provider) => {
-        const existing = remoteByProvider.get(provider);
-        const base = emptyRow(provider);
-        if (!existing) return base;
-        return {
-          ...base,
-          hasKey: Boolean(existing.hasKey),
-          baseUrl: existing.baseUrl ?? '',
-          enabled: Boolean(existing.enabled),
-          inputCostPerMtok:
-            existing.inputCostPerMtok != null ? String(existing.inputCostPerMtok) : '',
-          outputCostPerMtok:
-            existing.outputCostPerMtok != null ? String(existing.outputCostPerMtok) : '',
-        };
+      const remote: any[] = await trpc().settings.listProviders.query();
+      // Preserve already-fetched model lists across reloads: toRow()
+      // builds rows with models: null, and rebuilding that state on
+      // every loadProviders() (tab switch, post-save reload) is what
+      // wiped the List-models results.
+      const prevById = new Map(rows.map((r) => [r.id, r]));
+      rows = remote.map((r) => {
+        const row = toRow(r);
+        const prev = prevById.get(row.id);
+        if (prev?.models) row.models = prev.models;
+        if (prev) row.collapsed = prev.collapsed;
+        return row;
       });
+      // Auto-load the cached catalog per connection (no force-refresh:
+      // cached path never throws, offline yields stale/[]) so the
+      // Models-tab comboboxes have options without a manual List press
+      // per connection first.
+      for (const row of rows) {
+        if (!row.models) void loadConnectionModels(row, false);
+      }
     } catch (err) {
       // Most likely apps/server isn't running yet, or PUBLIC_SERVER_URL is
-      // wrong - keep the form visible (with defaults) and surface a clear,
-      // recoverable error instead of a blank/broken page.
+      // wrong - keep the form visible and surface a clear, recoverable
+      // error instead of a blank/broken page.
       loadError = describeError(err);
     } finally {
       loading = false;
@@ -150,13 +215,20 @@
       row.saving = false;
       return;
     }
+    const name = row.nameDraft.trim();
+    if (!name) {
+      row.saveError = 'Give this connection a name.';
+      row.saving = false;
+      return;
+    }
 
     try {
-      const client = trpc();
       const trimmedKey = row.apiKey.trim();
-      const trimmedBaseUrl = row.baseUrl.trim();
-      await client.settings.upsertProvider.mutate({
-        provider: row.provider,
+      const trimmedBaseUrl = row.baseUrlDraft.trim();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const updated: any = await trpc().settings.updateProvider.mutate({
+        id: row.id,
+        name,
         // Omit apiKey entirely when the field is left blank, so re-saving
         // the base URL or the enabled flag doesn't clobber an existing key.
         apiKey: trimmedKey === '' ? undefined : trimmedKey,
@@ -165,14 +237,82 @@
         inputCostPerMtok: inputRate,
         outputCostPerMtok: outputRate,
       });
-      if (trimmedKey !== '') row.hasKey = true;
-      row.apiKey = '';
-      row.baseUrl = trimmedBaseUrl;
+      Object.assign(row, toRow(updated));
       row.justSaved = true;
     } catch (err) {
       row.saveError = describeError(err);
     } finally {
       row.saving = false;
+    }
+  }
+
+  async function createProviderConnection(event: SubmitEvent) {
+    event.preventDefault();
+    creatingProvider = true;
+    createProviderError = null;
+    try {
+      const name = newProviderName.trim();
+      if (!name) {
+        createProviderError = 'Give this connection a name.';
+        return;
+      }
+      const trimmedKey = newProviderKey.trim();
+      const trimmedBaseUrl = newProviderBaseUrl.trim();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const created: any = await trpc().settings.createProvider.mutate({
+        name,
+        provider: newProviderType,
+        apiKey: trimmedKey === '' ? undefined : trimmedKey,
+        baseUrl: trimmedBaseUrl === '' ? null : trimmedBaseUrl,
+        enabled: newProviderEnabled,
+      });
+      rows = [...rows, toRow(created)];
+      newProviderName = '';
+      newProviderKey = '';
+      newProviderBaseUrl = '';
+    } catch (err) {
+      createProviderError = describeError(err);
+    } finally {
+      creatingProvider = false;
+    }
+  }
+
+  async function removeProviderConnection(row: ProviderRow) {
+    row.removing = true;
+    row.saveError = null;
+    try {
+      await trpc().settings.removeProvider.mutate({ id: row.id });
+      rows = rows.filter((r) => r.id !== row.id);
+    } catch (err) {
+      row.saveError = describeError(err);
+    } finally {
+      row.removing = false;
+    }
+  }
+
+  /**
+   * Loads the model list for one connection. `refresh: true`
+   * force-fetches from the provider (surfacing bad-key/unreachable
+   * errors) and doubles as "test connection" - a success proves the
+   * key/URL works. Cached path never throws (offline yields stale/[]).
+   */
+  async function loadConnectionModels(row: ProviderRow, refresh: boolean) {
+    row.modelsLoading = true;
+    row.modelsError = null;
+    try {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const models = (await trpc().settings.listConnectionModels.query({
+        id: row.id,
+        refresh: refresh ? true : undefined,
+      })) as any as { id: string; display_name: string }[];
+      row.models = models;
+      if (refresh && models.length === 0) {
+        row.modelsError = 'Connected, but the provider listed no models.';
+      }
+    } catch (err) {
+      row.modelsError = describeError(err);
+    } finally {
+      row.modelsLoading = false;
     }
   }
 
@@ -428,105 +568,179 @@
     }
   }
 
-  // ─── Team members (PLAN.md Phase 5's multi-user auth) ───────────────────
+  // ─── Account (single-user passcode) ───────────────────────────────
 
-  type UserRow = { id: string; name: string; email: string; created_at: string };
+  type AccountRow = { id: string; name: string; created_at: string };
 
-  let users = $state<UserRow[]>([]);
-  let usersLoading = $state(true);
-  let usersError = $state<string | null>(null);
+  let account = $state<AccountRow | null>(null);
+  let accountLoading = $state(true);
+  let accountError = $state<string | null>(null);
 
-  let newUserName = $state('');
-  let newUserEmail = $state('');
-  let newUserPassword = $state('');
-  let addingUser = $state(false);
-  let addUserError = $state<string | null>(null);
+  let accountName = $state('');
+  let savingName = $state(false);
+  let saveNameError = $state<string | null>(null);
 
-  let removingIds = $state<Record<string, boolean>>({});
+  let currentPasscode = $state('');
+  let newPasscode = $state('');
+  let newPasscodeConfirm = $state('');
+  let savingPasscode = $state(false);
+  let savePasscodeError = $state<string | null>(null);
+  let passcodeSaved = $state(false);
 
-  async function loadUsers() {
-    usersLoading = true;
-    usersError = null;
+  async function loadAccount() {
+    accountLoading = true;
+    accountError = null;
     try {
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      users = (await trpc().users.list.query()) as any as UserRow[];
+      account = (await trpc().users.profile.query()) as any as AccountRow;
+      accountName = account.name;
     } catch (err) {
-      usersError = describeError(err);
+      accountError = describeError(err);
     } finally {
-      usersLoading = false;
+      accountLoading = false;
     }
   }
 
   $effect(() => {
-    loadUsers();
+    loadAccount();
   });
 
-  async function addUser(event: SubmitEvent) {
+  async function saveName(event: SubmitEvent) {
     event.preventDefault();
-    addingUser = true;
-    addUserError = null;
+    savingName = true;
+    saveNameError = null;
     try {
-      await trpc().users.create.mutate({
-        name: newUserName.trim(),
-        email: newUserEmail.trim(),
-        password: newUserPassword,
-      });
-      newUserName = '';
-      newUserEmail = '';
-      newUserPassword = '';
-      await loadUsers();
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      account = (await trpc().users.updateName.mutate({
+        name: accountName.trim(),
+      })) as any as AccountRow;
+      accountName = account.name;
     } catch (err) {
-      addUserError = describeError(err);
+      saveNameError = describeError(err);
     } finally {
-      addingUser = false;
+      savingName = false;
     }
   }
 
-  async function removeUser(id: string) {
-    removingIds[id] = true;
-    usersError = null;
+  async function savePasscode(event: SubmitEvent) {
+    event.preventDefault();
+    savingPasscode = true;
+    savePasscodeError = null;
+    passcodeSaved = false;
     try {
-      await trpc().users.remove.mutate({ id });
-      await loadUsers();
+      if (newPasscode.length < 4) {
+        savePasscodeError = 'New passcode must be at least 4 characters.';
+        return;
+      }
+      if (newPasscode !== newPasscodeConfirm) {
+        savePasscodeError = 'The two new passcodes do not match.';
+        return;
+      }
+      await trpc().users.updatePasscode.mutate({ currentPasscode, newPasscode });
+      currentPasscode = '';
+      newPasscode = '';
+      newPasscodeConfirm = '';
+      passcodeSaved = true;
     } catch (err) {
-      usersError = describeError(err);
+      savePasscodeError = describeError(err);
     } finally {
-      removingIds[id] = false;
+      savingPasscode = false;
     }
   }
 
-  // ─── Model combos (named fallback chains across providers) ──────────────
+  // ─── Models (named mappings across provider connections) ──────────
 
-  type ComboEntryDraft = { provider: ModelComboEntryProvider; model: string };
-  type ComboRow = { id: string; name: string; entries: ComboEntryDraft[] };
+  type ModelEntryDraft = {
+    providerConnectionId: string;
+    model: string;
+    weight: number;
+    modelFilter: string;
+    modelsOpen: boolean;
+  };
+  type ModelRow = {
+    id: string;
+    name: string;
+    entries: { providerConnectionId?: string; provider?: string; model: string; weight?: number }[];
+    strategy?: ModelStrategy;
+  };
 
-  let combos = $state<ComboRow[]>([]);
+  const STRATEGIES: { value: ModelStrategy; label: string; blurb: string }[] = [
+    {
+      value: 'round_robin',
+      label: 'Round robin',
+      blurb: 'Weighted rotation across entries; a dead entry falls through to the next.',
+    },
+    {
+      value: 'fallback',
+      label: 'Fallback',
+      blurb: 'Strict order - always try the first, next only on error.',
+    },
+    {
+      value: 'router',
+      label: 'Router',
+      blurb: 'Reserved - behaves as fallback until a cost/latency router exists.',
+    },
+  ];
+
+  let combos = $state<ModelRow[]>([]);
   let combosLoading = $state(true);
   let combosError = $state<string | null>(null);
 
-  function emptyEntry(): ComboEntryDraft {
-    return { provider: 'anthropic', model: '' };
+  function emptyEntry(): ModelEntryDraft {
+    return {
+      providerConnectionId: rows[0]?.id ?? '',
+      model: '',
+      weight: 1,
+      // Draft-only: the typed filter for the searchable model combobox.
+      // Mirrors `model` until the user types - kept separate so picking
+      // an option vs. typing a custom id don't fight over one field.
+      modelFilter: '',
+      modelsOpen: false,
+    };
+  }
+
+  function connectionLabel(entry: {
+    providerConnectionId?: string;
+    provider?: string;
+    model: string;
+  }): string {
+    const conn = entry.providerConnectionId
+      ? rows.find((r) => r.id === entry.providerConnectionId)
+      : undefined;
+    const connName = conn?.name ?? entry.provider ?? entry.providerConnectionId ?? '?';
+    return `${connName}/${entry.model}`;
   }
 
   let newComboName = $state('');
-  let newComboEntries = $state<ComboEntryDraft[]>([emptyEntry()]);
+  let newComboEntries = $state<ModelEntryDraft[]>([emptyEntry()]);
+  let newComboStrategy = $state<ModelStrategy>('round_robin');
   let creatingCombo = $state(false);
   let createComboError = $state<string | null>(null);
 
   let editingComboId = $state<string | null>(null);
   let editComboName = $state('');
-  let editComboEntries = $state<ComboEntryDraft[]>([]);
+  let editComboEntries = $state<ModelEntryDraft[]>([]);
+  let editComboStrategy = $state<ModelStrategy>('fallback');
   let savingComboEdit = $state(false);
   let editComboError = $state<string | null>(null);
 
   let removingComboIds = $state<Record<string, boolean>>({});
+  let defaultModelName = $state<string | null>(null);
+  let settingDefaultName = $state<string | null>(null);
+  let setDefaultError = $state<string | null>(null);
 
   async function loadCombos() {
     combosLoading = true;
     combosError = null;
     try {
+      const client = trpc();
       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      combos = (await trpc().modelCombos.list.query()) as any as ComboRow[];
+      const [comboRows, defaultRow] = await Promise.all([
+        client.modelCombos.list.query() as any as Promise<ModelRow[]>,
+        client.settings.getDefaultModel.query(),
+      ]);
+      combos = comboRows;
+      defaultModelName = defaultRow.name;
     } catch (err) {
       combosError = describeError(err);
     } finally {
@@ -534,14 +748,34 @@
     }
   }
 
+  async function setDefaultModel(name: string) {
+    settingDefaultName = name;
+    setDefaultError = null;
+    try {
+      const updated = await trpc().settings.setDefaultModel.mutate({ name });
+      defaultModelName = updated.name;
+    } catch (err) {
+      setDefaultError = describeError(err);
+    } finally {
+      settingDefaultName = null;
+    }
+  }
+
   $effect(() => {
     loadCombos();
   });
 
-  function sanitizeEntries(entries: ComboEntryDraft[]): ComboEntryDraft[] {
+  /** Wire shape sent to the server - the combobox draft fields stay local. */
+  type ModelEntryPayload = { providerConnectionId: string; model: string; weight: number };
+
+  function sanitizeEntries(entries: ModelEntryDraft[]): ModelEntryPayload[] {
     return entries
-      .map((e) => ({ provider: e.provider, model: e.model.trim() }))
-      .filter((e) => e.model.length > 0);
+      .map((e) => ({
+        providerConnectionId: e.providerConnectionId,
+        model: e.model.trim(),
+        weight: Math.max(1, Math.floor(e.weight) || 1),
+      }))
+      .filter((e) => e.providerConnectionId && e.model.length > 0);
   }
 
   async function createCombo(event: SubmitEvent) {
@@ -549,13 +783,13 @@
     const name = newComboName.trim();
     const entries = sanitizeEntries(newComboEntries);
     if (!name || entries.length === 0) {
-      createComboError = 'A name and at least one entry (provider + model) are required.';
+      createComboError = 'A name and at least one entry (connection + model) are required.';
       return;
     }
     creatingCombo = true;
     createComboError = null;
     try {
-      await trpc().modelCombos.create.mutate({ name, entries });
+      await trpc().modelCombos.create.mutate({ name, entries, strategy: newComboStrategy });
       newComboName = '';
       newComboEntries = [emptyEntry()];
       await loadCombos();
@@ -566,15 +800,59 @@
     }
   }
 
-  function startEditCombo(row: ComboRow) {
+  function startEditCombo(row: ModelRow) {
     if (editingComboId === row.id) {
       editingComboId = null;
       return;
     }
     editingComboId = row.id;
     editComboName = row.name;
-    editComboEntries = row.entries.map((e) => ({ ...e }));
+    editComboStrategy = row.strategy ?? 'fallback';
+    // Legacy entries ({provider, model} without a connection) can't be
+    // edited in place - they resolve to the default connection at call
+    // time. Re-point them here so saving writes the new shape.
+    editComboEntries = row.entries.map((e) => ({
+      providerConnectionId:
+        e.providerConnectionId ??
+        rows.find((r) => r.provider === (e.provider as ModelComboEntryProvider))?.id ??
+        '',
+      model: e.model,
+      weight: e.weight ?? 1,
+      modelFilter: e.model,
+      modelsOpen: false,
+    }));
     editComboError = null;
+  }
+
+  /**
+   * The searchable model combobox options for one entry: the selected
+   * connection's fetched catalog (`row.models`), filtered by what the
+   * user typed. `null` catalog = not fetched yet - the combobox then
+   * offers "fetch first" instead of an empty list. A typed custom id
+   * always stays selectable ("Use ..." row), so models missing from
+   * the catalog (new releases, proxies hiding the list) still work.
+   */
+  function entryModelOptions(entry: ModelEntryDraft): { id: string; display_name: string }[] {
+    const conn = rows.find((r) => r.id === entry.providerConnectionId);
+    if (!conn?.models) return [];
+    const q = entry.modelFilter.trim().toLowerCase();
+    if (!q) return conn.models;
+    return conn.models.filter(
+      (m) => m.id.toLowerCase().includes(q) || m.display_name.toLowerCase().includes(q),
+    );
+  }
+
+  function pickEntryModel(entry: ModelEntryDraft, id: string): void {
+    entry.model = id;
+    entry.modelFilter = id;
+    entry.modelsOpen = false;
+  }
+
+  function connectionModelsState(
+    connectionId: string,
+  ): { models: { id: string; display_name: string }[] | null; loading: boolean } {
+    const conn = rows.find((r) => r.id === connectionId);
+    return { models: conn?.models ?? null, loading: conn?.modelsLoading ?? false };
   }
 
   async function saveComboEdit() {
@@ -582,13 +860,18 @@
     const name = editComboName.trim();
     const entries = sanitizeEntries(editComboEntries);
     if (!name || entries.length === 0) {
-      editComboError = 'A name and at least one entry (provider + model) are required.';
+      editComboError = 'A name and at least one entry (connection + model) are required.';
       return;
     }
     savingComboEdit = true;
     editComboError = null;
     try {
-      await trpc().modelCombos.update.mutate({ id: editingComboId, name, entries });
+      await trpc().modelCombos.update.mutate({
+        id: editingComboId,
+        name,
+        entries,
+        strategy: editComboStrategy,
+      });
       editingComboId = null;
       await loadCombos();
     } catch (err) {
@@ -612,7 +895,7 @@
   }
 </script>
 
-<div class="mx-auto flex max-w-3xl flex-col gap-6">
+<div class="p-4 sm:p-6"><div class="mx-auto flex max-w-3xl flex-col gap-6">
   <div>
     <h1 class="text-2xl font-semibold">Settings</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
@@ -621,9 +904,34 @@
     </p>
   </div>
 
-  <section class="flex flex-col gap-4">
+  <!-- Tabs: one section visible at a time. Buttons render as a segmented
+       control; panels below switch on `activeTab`. Data for every tab
+       still loads on mount (existing $effect loaders untouched), so
+       switching tabs never shows a loading flash. -->
+  <div
+    role="tablist"
+    aria-label="Settings sections"
+    class="flex flex-wrap gap-1 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-1"
+  >
+    {#each TABS as tab (tab.id)}
+      <button
+        type="button"
+        role="tab"
+        aria-selected={activeTab === tab.id}
+        onclick={() => (activeTab = tab.id)}
+        class="rounded-md px-3 py-1.5 text-sm font-medium transition-colors {activeTab === tab.id
+          ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
+          : 'text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)] hover:text-[var(--color-text)]'}"
+      >
+        {tab.label}
+      </button>
+    {/each}
+  </div>
+
+  {#if activeTab === 'providers'}
+  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Providers">
     <div class="flex items-center justify-between gap-3">
-      <h2 class="text-lg font-semibold">Model providers</h2>
+      <h2 class="text-lg font-semibold">Providers</h2>
       <button
         type="button"
         class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
@@ -633,6 +941,10 @@
         {loading ? 'Loading…' : 'Reload'}
       </button>
     </div>
+    <p class="text-sm text-[var(--color-text-muted)]">
+      Connected providers - one type can back many connections with different keys (e.g. "OpenAI
+      utama" and "OpenAI murah"). Models below map to these connections by name.
+    </p>
 
     {#if loadError}
       <div
@@ -648,16 +960,42 @@
     {/if}
 
     <div class="flex flex-col gap-4">
-      {#each rows as row (row.provider)}
+      {#each rows as row (row.id)}
         <div
           class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
         >
-          <div class="flex flex-wrap items-center justify-between gap-2">
-            <h3 class="font-medium">{providerLabels[row.provider]}</h3>
-            <span class="text-xs text-[var(--color-text-muted)]">
-              {row.hasKey ? 'Key set' : 'No key set'}
+          <button
+            type="button"
+            onclick={() => (row.collapsed = !row.collapsed)}
+            aria-expanded={!row.collapsed}
+            class="flex w-full flex-wrap items-center justify-between gap-2 text-left"
+          >
+            <span class="flex items-center gap-2">
+              <span
+                class="inline-block text-xs text-[var(--color-text-muted)] transition-transform {row.collapsed
+                  ? ''
+                  : 'rotate-90'}"
+                aria-hidden="true">▶</span
+              >
+              <span class="font-medium">{row.name}</span>
             </span>
-          </div>
+            <span class="text-xs text-[var(--color-text-muted)]">
+              {providerLabels[row.provider]} · {row.hasKey ? 'Key set' : 'No key set'}{row.enabled
+                ? ''
+                : ' · Disabled'}
+            </span>
+          </button>
+
+          {#if !row.collapsed}
+
+          <label class="flex flex-col gap-1 text-sm">
+            <span class="text-[var(--color-text-muted)]">Connection name</span>
+            <input
+              type="text"
+              bind:value={row.nameDraft}
+              class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+            />
+          </label>
 
           <label class="flex flex-col gap-1 text-sm">
             <span class="text-[var(--color-text-muted)]">API key</span>
@@ -674,7 +1012,7 @@
             <span class="text-[var(--color-text-muted)]">Base URL (optional)</span>
             <input
               type="text"
-              bind:value={row.baseUrl}
+              bind:value={row.baseUrlDraft}
               placeholder={baseUrlHints[row.provider]}
               class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
             />
@@ -721,7 +1059,48 @@
             <p class="text-sm text-[var(--color-success)]">Saved.</p>
           {/if}
 
-          <div>
+          <div class="flex flex-col gap-2 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <span class="text-sm font-medium"
+                >Models{row.models ? ` (${row.models.length})` : ''}</span
+              >
+              <button
+                type="button"
+                class="rounded-md border border-[var(--color-border)] px-2.5 py-1 text-xs font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+                onclick={() => loadConnectionModels(row, true)}
+                disabled={row.modelsLoading}
+              >
+                {row.modelsLoading ? 'Checking…' : row.models ? 'Refresh' : 'List models'}
+              </button>
+            </div>
+            {#if row.modelsError}
+              <p class="text-xs text-[var(--color-danger)]">{row.modelsError}</p>
+            {:else if row.models}
+              {#if row.models.length === 0}
+                <p class="text-xs text-[var(--color-text-muted)]">No models found.</p>
+              {:else}
+                <ul class="flex max-h-40 flex-col gap-1 overflow-y-auto text-xs">
+                  {#each row.models as m (m.id)}
+                    <li
+                      class="flex items-baseline justify-between gap-2 rounded px-2 py-1 hover:bg-[var(--color-surface-muted)]"
+                    >
+                      <code class="truncate font-mono">{m.id}</code>
+                      {#if m.display_name && m.display_name !== m.id}
+                        <span class="shrink-0 text-[var(--color-text-muted)]">{m.display_name}</span>
+                      {/if}
+                    </li>
+                  {/each}
+                </ul>
+              {/if}
+            {:else}
+              <p class="text-xs text-[var(--color-text-muted)]">
+                Paste a key, save, then list the models this connection offers - doubles as a
+                connection test.
+              </p>
+            {/if}
+          </div>
+
+          <div class="flex gap-2">
             <button
               type="button"
               class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
@@ -730,13 +1109,92 @@
             >
               {row.saving ? 'Saving…' : 'Save'}
             </button>
+            <button
+              type="button"
+              class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium text-[var(--color-danger)] hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+              onclick={() => removeProviderConnection(row)}
+              disabled={row.removing}
+            >
+              {row.removing ? 'Removing…' : 'Remove'}
+            </button>
           </div>
+          {/if}
         </div>
       {/each}
+      {#if !loading && rows.length === 0}
+        <p class="text-sm text-[var(--color-text-muted)]">No providers connected yet.</p>
+      {/if}
     </div>
-  </section>
 
-  <section class="flex flex-col gap-4">
+    <form
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      onsubmit={createProviderConnection}
+    >
+      <h3 class="text-sm font-semibold">Connect a provider</h3>
+      <div class="grid gap-3 sm:grid-cols-2">
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Provider</span>
+          <select
+            bind:value={newProviderType}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          >
+            {#each MODEL_COMBO_ENTRY_PROVIDERS as p (p)}
+              <option value={p}>{providerLabels[p]}</option>
+            {/each}
+          </select>
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Connection name</span>
+          <input
+            type="text"
+            required
+            placeholder="e.g. OpenAI utama"
+            bind:value={newProviderName}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">API key</span>
+          <input
+            type="password"
+            autocomplete="off"
+            bind:value={newProviderKey}
+            placeholder="Leave blank for keyless local servers"
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Base URL (optional)</span>
+          <input
+            type="text"
+            bind:value={newProviderBaseUrl}
+            placeholder={baseUrlHints[newProviderType]}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+      </div>
+      <label class="flex items-center gap-2 text-sm">
+        <input type="checkbox" bind:checked={newProviderEnabled} class="h-4 w-4" />
+        <span>Enabled</span>
+      </label>
+      {#if createProviderError}
+        <p class="text-sm text-[var(--color-danger)]">{createProviderError}</p>
+      {/if}
+      <div>
+        <button
+          type="submit"
+          disabled={creatingProvider}
+          class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {creatingProvider ? 'Connecting…' : 'Connect provider'}
+        </button>
+      </div>
+    </form>
+  </div>
+  {/if}
+
+  {#if activeTab === 'mcp'}
+  <div class="flex flex-col gap-4" role="tabpanel" aria-label="MCP servers">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">MCP servers</h2>
       <button
@@ -865,9 +1323,11 @@
         </button>
       </div>
     </form>
-  </section>
+  </div>
+  {/if}
 
-  <section class="flex flex-col gap-4">
+  {#if activeTab === 'secrets'}
+  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Secrets">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">Secrets</h2>
       <button
@@ -945,9 +1405,11 @@
         </button>
       </div>
     </form>
-  </section>
+  </div>
+  {/if}
 
-  <section class="flex flex-col gap-4">
+  {#if activeTab === 'budgets'}
+  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Budgets and approval policy">
     <div class="flex items-center justify-between gap-3">
       <h2 class="text-lg font-semibold">Budgets & approval policy</h2>
       <button
@@ -1076,10 +1538,11 @@
         </button>
       </div>
     </form>
-  </section>
+  </div>
+  {/if}
 
-  <section class="flex flex-col gap-4">
-    <h2 class="text-lg font-semibold">Backups</h2>
+  {#if activeTab === 'backups'}
+  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Backups">
     <p class="text-sm text-[var(--color-text-muted)]">
       Downloads a single JSON file with every core table (company, teams, agents, projects, tasks,
       runs, messages, the knowledge graph, wiki pages, ...) plus every project's wiki files.
@@ -1095,112 +1558,120 @@
         Download backup
       </a>
     </div>
-  </section>
+  </div>
+  {/if}
 
-  <section class="flex flex-col gap-4">
+  {#if activeTab === 'account'}
+  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Account">
     <div class="flex items-center justify-between gap-3">
-      <h2 class="text-lg font-semibold">Team members</h2>
+      <h2 class="text-lg font-semibold">Account</h2>
       <button
         type="button"
         class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
-        onclick={loadUsers}
-        disabled={usersLoading}
+        onclick={loadAccount}
+        disabled={accountLoading}
       >
-        {usersLoading ? 'Loading…' : 'Reload'}
+        {accountLoading ? 'Loading…' : 'Reload'}
       </button>
     </div>
     <p class="text-sm text-[var(--color-text-muted)]">
-      Anyone who can log in has the same access - there's no owner/member distinction (PLAN.md's
-      Phase 5 multi-user auth). There's no self-serve signup: add a teammate here with a password
-      they can change later; removing the last remaining account is blocked so nobody gets locked
-      out.
+      Single-user install: one account, one passcode. Rename yourself or rotate the passcode
+      here - changing it asks for the current one first.
     </p>
 
-    {#if usersError}
-      <p class="text-sm text-[var(--color-danger)]">{usersError}</p>
+    {#if accountError}
+      <p class="text-sm text-[var(--color-danger)]">{accountError}</p>
     {/if}
-
-    <div class="flex flex-col gap-2">
-      {#each users as row (row.id)}
-        <div
-          class="flex items-center justify-between gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-3"
-        >
-          <div class="flex flex-col">
-            <span class="text-sm font-medium">{row.name}</span>
-            <span class="text-xs text-[var(--color-text-muted)]">{row.email}</span>
-          </div>
-          <button
-            type="button"
-            onclick={() => removeUser(row.id)}
-            disabled={removingIds[row.id] || users.length <= 1}
-            title={users.length <= 1
-              ? "Can't remove the last remaining account"
-              : 'Remove this teammate'}
-            class="shrink-0 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium text-[var(--color-danger)] hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
-          >
-            {removingIds[row.id] ? 'Removing…' : 'Remove'}
-          </button>
-        </div>
-      {/each}
-      {#if !usersLoading && users.length === 0}
-        <p class="text-sm text-[var(--color-text-muted)]">No accounts yet.</p>
-      {/if}
-    </div>
 
     <form
       class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
-      onsubmit={addUser}
+      onsubmit={saveName}
     >
-      <h3 class="text-sm font-semibold">Add a teammate</h3>
-      <div class="grid gap-3 sm:grid-cols-3">
-        <label class="flex flex-col gap-1 text-sm">
-          <span class="text-[var(--color-text-muted)]">Name</span>
-          <input
-            type="text"
-            required
-            bind:value={newUserName}
-            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
-          />
-        </label>
-        <label class="flex flex-col gap-1 text-sm">
-          <span class="text-[var(--color-text-muted)]">Email</span>
-          <input
-            type="email"
-            required
-            bind:value={newUserEmail}
-            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
-          />
-        </label>
-        <label class="flex flex-col gap-1 text-sm">
-          <span class="text-[var(--color-text-muted)]">Password</span>
-          <input
-            type="password"
-            autocomplete="new-password"
-            required
-            minlength="8"
-            bind:value={newUserPassword}
-            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
-          />
-        </label>
-      </div>
-      {#if addUserError}
-        <p class="text-sm text-[var(--color-danger)]">{addUserError}</p>
+      <h3 class="text-sm font-semibold">Display name</h3>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-[var(--color-text-muted)]">Name</span>
+        <input
+          type="text"
+          required
+          bind:value={accountName}
+          class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+        />
+      </label>
+      {#if saveNameError}
+        <p class="text-sm text-[var(--color-danger)]">{saveNameError}</p>
       {/if}
       <div>
         <button
           type="submit"
-          disabled={addingUser}
+          disabled={savingName}
           class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
         >
-          {addingUser ? 'Adding…' : 'Add teammate'}
+          {savingName ? 'Saving…' : 'Save name'}
         </button>
       </div>
     </form>
-  </section>
 
-  <section class="flex flex-col gap-4">
+    <form
+      class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
+      onsubmit={savePasscode}
+    >
+      <h3 class="text-sm font-semibold">Change passcode</h3>
+      <div class="grid gap-3 sm:grid-cols-3">
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Current passcode</span>
+          <input
+            type="password"
+            autocomplete="current-password"
+            required
+            bind:value={currentPasscode}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">New passcode</span>
+          <input
+            type="password"
+            autocomplete="new-password"
+            required
+            minlength="4"
+            bind:value={newPasscode}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+        <label class="flex flex-col gap-1 text-sm">
+          <span class="text-[var(--color-text-muted)]">Confirm new passcode</span>
+          <input
+            type="password"
+            autocomplete="new-password"
+            required
+            bind:value={newPasscodeConfirm}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+          />
+        </label>
+      </div>
+      {#if savePasscodeError}
+        <p class="text-sm text-[var(--color-danger)]">{savePasscodeError}</p>
+      {/if}
+      {#if passcodeSaved}
+        <p class="text-sm text-[var(--color-success)]">Passcode changed.</p>
+      {/if}
+      <div>
+        <button
+          type="submit"
+          disabled={savingPasscode}
+          class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {savingPasscode ? 'Saving…' : 'Change passcode'}
+        </button>
+      </div>
+    </form>
+  </div>
+  {/if}
+
+  {#if activeTab === 'models'}
+  <div class="flex flex-col gap-4" role="tabpanel" aria-label="Models">
     <div class="flex items-center justify-between gap-3">
-      <h2 class="text-lg font-semibold">Model combos</h2>
+      <h2 class="text-lg font-semibold">Models</h2>
       <button
         type="button"
         class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-sm font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
@@ -1211,14 +1682,17 @@
       </button>
     </div>
     <p class="text-sm text-[var(--color-text-muted)]">
-      A combo is a named, ordered fallback chain across providers - hire an agent onto "Combo" (Team
-      page) and pick one of these by name instead of a single model. On each call, Katnor tries the
-      first entry; if it errors, it automatically tries the next, in order, and uses the first one
-      that answers.
+      A model is a named mapping across provider connections - hire an agent onto "Combo" (Team
+      page) and pick one of these by name instead of a single model. Round robin spreads calls by
+      weight; a dead entry falls through to the next, so one down connection degrades rather than
+      failing the call.
     </p>
 
     {#if combosError}
       <p class="text-sm text-[var(--color-danger)]">{combosError}</p>
+    {/if}
+    {#if setDefaultError}
+      <p class="text-sm text-[var(--color-danger)]">{setDefaultError}</p>
     {/if}
 
     <div class="flex flex-col gap-2">
@@ -1228,14 +1702,33 @@
         >
           <div class="flex items-center justify-between gap-3">
             <div class="flex flex-col">
-              <span class="text-sm font-medium">{row.name}</span>
+              <span class="text-sm font-medium"
+                >{row.name} <span class="text-xs font-normal text-[var(--color-text-muted)]"
+                  >· {row.strategy ?? 'fallback'}</span
+                ></span
+              >
               <span class="text-xs text-[var(--color-text-muted)]">
-                {row.entries
-                  .map((e) => `${providerLabels[e.provider] ?? e.provider}/${e.model}`)
-                  .join(' → ')}
+                {row.entries.map((e) => connectionLabel(e)).join(' → ')}
               </span>
             </div>
             <div class="flex shrink-0 gap-2">
+              {#if defaultModelName === row.name}
+                <span
+                  class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-contrast)]"
+                  title="New hires (and the CEO) use this model unless picked otherwise"
+                  >Default</span
+                >
+              {:else}
+                <button
+                  type="button"
+                  onclick={() => setDefaultModel(row.name)}
+                  disabled={settingDefaultName !== null}
+                  title="Make new hires default to this model"
+                  class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)] disabled:opacity-50"
+                >
+                  {settingDefaultName === row.name ? 'Setting…' : 'Set as default'}
+                </button>
+              {/if}
               <button
                 type="button"
                 onclick={() => startEditCombo(row)}
@@ -1272,43 +1765,132 @@
                 />
               </label>
               <div class="flex flex-col gap-2">
-                <span class="text-sm text-[var(--color-text-muted)]">Entries, tried in order</span>
-                {#each editComboEntries as entry, i (i)}
-                  <div class="flex items-center gap-2">
-                    <select
-                      bind:value={entry.provider}
-                      class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
-                    >
-                      {#each MODEL_COMBO_ENTRY_PROVIDERS as p (p)}
-                        <option value={p}>{providerLabels[p]}</option>
-                      {/each}
-                    </select>
-                    <input
-                      type="text"
-                      placeholder="model id"
-                      bind:value={entry.model}
-                      class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
-                    />
+                <div class="flex flex-col gap-2">
+                  <span class="text-sm text-[var(--color-text-muted)]"
+                    >Entries{editComboStrategy === 'fallback'
+                      ? ', tried in order'
+                      : ', rotated by weight'}</span
+                  >
+                  {#each editComboEntries as entry, i (i)}
+                    <div class="flex items-center gap-2">
+                      <select
+                        bind:value={entry.providerConnectionId}
+                        class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
+                      >
+                        {#each rows as conn (conn.id)}
+                          <option value={conn.id}>{conn.name} · {providerLabels[conn.provider]}</option>
+                        {/each}
+                      </select>
+                      <div class="relative flex-1">
+                        <input
+                          type="text"
+                          placeholder="search or type model id"
+                          bind:value={entry.modelFilter}
+                          onfocus={() => (entry.modelsOpen = true)}
+                          oninput={() => {
+                            entry.modelsOpen = true;
+                            entry.model = entry.modelFilter;
+                          }}
+                          class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+                        />
+                        {#if entry.modelsOpen}
+                          {@const state = connectionModelsState(entry.providerConnectionId)}
+                          {@const options = entryModelOptions(entry)}
+                          {@const typed = entry.modelFilter.trim()}
+                          <div
+                            class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg"
+                          >
+                            {#if state.loading}
+                              <p class="px-2 py-1.5 text-xs text-[var(--color-text-muted)]">
+                                Loading…
+                              </p>
+                            {:else if !state.models}
+                              <p class="px-2 py-1.5 text-xs text-[var(--color-text-muted)]">
+                                No catalog yet - open the Providers tab and press "List models" on
+                                this connection first, or just type the id.
+                              </p>
+                            {:else if options.length === 0 && !typed}
+                              <p class="px-2 py-1.5 text-xs text-[var(--color-text-muted)]">
+                                No models found on this connection.
+                              </p>
+                            {:else}
+                              {#each options as m (m.id)}
+                                <button
+                                  type="button"
+                                  onclick={() => pickEntryModel(entry, m.id)}
+                                  class="flex w-full items-baseline justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--color-surface-muted)] {entry.model ===
+                                  m.id
+                                    ? 'bg-[var(--color-surface-muted)]'
+                                    : ''}"
+                                >
+                                  <code class="truncate font-mono">{m.id}</code>
+                                  {#if m.display_name && m.display_name !== m.id}
+                                    <span class="shrink-0 text-[var(--color-text-muted)]"
+                                      >{m.display_name}</span
+                                    >
+                                  {/if}
+                                </button>
+                              {/each}
+                              {#if typed && !options.some((m) => m.id === typed)}
+                                <button
+                                  type="button"
+                                  onclick={() => pickEntryModel(entry, typed)}
+                                  class="w-full rounded px-2 py-1.5 text-left text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
+                                >
+                                  Use "<code class="font-mono">{typed}</code>"
+                                </button>
+                              {/if}
+                            {/if}
+                            <button
+                              type="button"
+                              onclick={() => (entry.modelsOpen = false)}
+                              class="w-full rounded px-2 py-1.5 text-left text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
+                            >
+                              Close
+                            </button>
+                          </div>
+                        {/if}
+                      </div>
+                      <input
+                        type="number"
+                        min="1"
+                        step="1"
+                        title="Round-robin weight"
+                        bind:value={entry.weight}
+                        class="w-16 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
+                      />
+                      <button
+                        type="button"
+                        onclick={() =>
+                          (editComboEntries = editComboEntries.filter((_, idx) => idx !== i))}
+                        disabled={editComboEntries.length <= 1}
+                        class="shrink-0 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-xs disabled:opacity-50"
+                      >
+                        Remove
+                      </button>
+                    </div>
+                  {/each}
+                  <div>
                     <button
                       type="button"
-                      onclick={() =>
-                        (editComboEntries = editComboEntries.filter((_, idx) => idx !== i))}
-                      disabled={editComboEntries.length <= 1}
-                      class="shrink-0 rounded-md border border-[var(--color-border)] px-2 py-1.5 text-xs disabled:opacity-50"
+                      onclick={() => (editComboEntries = [...editComboEntries, emptyEntry()])}
+                      class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
                     >
-                      Remove
+                      + Add entry
                     </button>
                   </div>
-                {/each}
-                <div>
-                  <button
-                    type="button"
-                    onclick={() => (editComboEntries = [...editComboEntries, emptyEntry()])}
-                    class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
-                  >
-                    + Add fallback entry
-                  </button>
                 </div>
+                <label class="flex flex-col gap-1 text-sm">
+                  <span class="text-[var(--color-text-muted)]">Strategy</span>
+                  <select
+                    bind:value={editComboStrategy}
+                    class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
+                  >
+                    {#each STRATEGIES as s (s.value)}
+                      <option value={s.value}>{s.label} - {s.blurb}</option>
+                    {/each}
+                  </select>
+                </label>
               </div>
               {#if editComboError}
                 <p class="text-sm text-[var(--color-danger)]">{editComboError}</p>
@@ -1319,7 +1901,7 @@
                   disabled={savingComboEdit}
                   class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
                 >
-                  {savingComboEdit ? 'Saving…' : 'Save combo'}
+                  {savingComboEdit ? 'Saving…' : 'Save model'}
                 </button>
               </div>
             </form>
@@ -1327,7 +1909,7 @@
         </div>
       {/each}
       {#if !combosLoading && combos.length === 0}
-        <p class="text-sm text-[var(--color-text-muted)]">No model combos yet.</p>
+        <p class="text-sm text-[var(--color-text-muted)]">No models yet.</p>
       {/if}
     </div>
 
@@ -1335,34 +1917,119 @@
       class="flex flex-col gap-3 rounded-lg border border-[var(--color-border)] bg-[var(--color-surface)] p-4"
       onsubmit={createCombo}
     >
-      <h3 class="text-sm font-semibold">New combo</h3>
+      <h3 class="text-sm font-semibold">New model</h3>
       <label class="flex flex-col gap-1 text-sm">
         <span class="text-[var(--color-text-muted)]">Name</span>
         <input
           type="text"
           required
-          placeholder="e.g. claude-opus-combo"
+          placeholder="e.g. coding"
           bind:value={newComboName}
           class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
         />
       </label>
+      <label class="flex flex-col gap-1 text-sm">
+        <span class="text-[var(--color-text-muted)]">Strategy</span>
+        <select
+          bind:value={newComboStrategy}
+          class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
+        >
+          {#each STRATEGIES as s (s.value)}
+            <option value={s.value}>{s.label} - {s.blurb}</option>
+          {/each}
+        </select>
+      </label>
       <div class="flex flex-col gap-2">
-        <span class="text-sm text-[var(--color-text-muted)]">Entries, tried in order</span>
+        <span class="text-sm text-[var(--color-text-muted)]"
+          >Entries{newComboStrategy === 'fallback' ? ', tried in order' : ', rotated by weight'}</span
+        >
         {#each newComboEntries as entry, i (i)}
           <div class="flex items-center gap-2">
             <select
-              bind:value={entry.provider}
+              bind:value={entry.providerConnectionId}
               class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
             >
-              {#each MODEL_COMBO_ENTRY_PROVIDERS as p (p)}
-                <option value={p}>{providerLabels[p]}</option>
+              {#each rows as conn (conn.id)}
+                <option value={conn.id}>{conn.name} · {providerLabels[conn.provider]}</option>
               {/each}
             </select>
+            <div class="relative flex-1">
+              <input
+                type="text"
+                placeholder="search or type model id"
+                bind:value={entry.modelFilter}
+                onfocus={() => (entry.modelsOpen = true)}
+                oninput={() => {
+                  entry.modelsOpen = true;
+                  // Typing is itself a valid custom id - keep `model` in
+                  // sync so submit works without picking an option first.
+                  entry.model = entry.modelFilter;
+                }}
+                class="w-full rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+              />
+              {#if entry.modelsOpen}
+                {@const state = connectionModelsState(entry.providerConnectionId)}
+                {@const options = entryModelOptions(entry)}
+                {@const typed = entry.modelFilter.trim()}
+                <div
+                  class="absolute z-10 mt-1 max-h-48 w-full overflow-y-auto rounded-md border border-[var(--color-border)] bg-[var(--color-surface)] p-1 shadow-lg"
+                >
+                  {#if state.loading}
+                    <p class="px-2 py-1.5 text-xs text-[var(--color-text-muted)]">Loading…</p>
+                  {:else if !state.models}
+                    <p class="px-2 py-1.5 text-xs text-[var(--color-text-muted)]">
+                      No catalog yet - open the Providers tab and press "List models" on this
+                      connection first, or just type the id.
+                    </p>
+                  {:else if options.length === 0 && !typed}
+                    <p class="px-2 py-1.5 text-xs text-[var(--color-text-muted)]">
+                      No models found on this connection.
+                    </p>
+                  {:else}
+                    {#each options as m (m.id)}
+                      <button
+                        type="button"
+                        onclick={() => pickEntryModel(entry, m.id)}
+                        class="flex w-full items-baseline justify-between gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-[var(--color-surface-muted)] {entry.model ===
+                        m.id
+                          ? 'bg-[var(--color-surface-muted)]'
+                          : ''}"
+                      >
+                        <code class="truncate font-mono">{m.id}</code>
+                        {#if m.display_name && m.display_name !== m.id}
+                          <span class="shrink-0 text-[var(--color-text-muted)]"
+                            >{m.display_name}</span
+                          >
+                        {/if}
+                      </button>
+                    {/each}
+                    {#if typed && !options.some((m) => m.id === typed)}
+                      <button
+                        type="button"
+                        onclick={() => pickEntryModel(entry, typed)}
+                        class="w-full rounded px-2 py-1.5 text-left text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
+                      >
+                        Use "<code class="font-mono">{typed}</code>"
+                      </button>
+                    {/if}
+                  {/if}
+                  <button
+                    type="button"
+                    onclick={() => (entry.modelsOpen = false)}
+                    class="w-full rounded px-2 py-1.5 text-left text-xs text-[var(--color-text-muted)] hover:bg-[var(--color-surface-muted)]"
+                  >
+                    Close
+                  </button>
+                </div>
+              {/if}
+            </div>
             <input
-              type="text"
-              placeholder="model id"
-              bind:value={entry.model}
-              class="flex-1 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-3 py-1.5 text-sm text-[var(--color-text)]"
+              type="number"
+              min="1"
+              step="1"
+              title="Round-robin weight"
+              bind:value={entry.weight}
+              class="w-16 rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] px-2 py-1.5 text-sm text-[var(--color-text)]"
             />
             <button
               type="button"
@@ -1380,7 +2047,7 @@
             onclick={() => (newComboEntries = [...newComboEntries, emptyEntry()])}
             class="rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
           >
-            + Add fallback entry
+            + Add entry
           </button>
         </div>
       </div>
@@ -1393,9 +2060,11 @@
           disabled={creatingCombo}
           class="rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-sm font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
         >
-          {creatingCombo ? 'Creating…' : 'Create combo'}
+          {creatingCombo ? 'Creating…' : 'Create model'}
         </button>
       </div>
     </form>
-  </section>
+  </div>
+  {/if}
 </div>
+ </div>

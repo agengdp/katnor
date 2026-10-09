@@ -1,5 +1,5 @@
 import type { PublicUser } from '@katnor/core';
-import { userRepo } from '@katnor/db';
+import { hashPassword, userRepo, verifyPassword } from '@katnor/db';
 import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc.js';
@@ -11,51 +11,48 @@ function toPublicUser(row: UserRow): PublicUser {
   return publicUser;
 }
 
+async function requireSingleUser(): Promise<UserRow> {
+  const row = await userRepo.getSingleUser();
+  if (!row) {
+    throw new TRPCError({ code: 'NOT_FOUND', message: 'No account exists yet - finish setup first.' });
+  }
+  return row;
+}
+
 /**
- * Settings > Team members (PLAN.md Phase 5's "multi-user auth"). Every
- * procedure here requires being logged in already - there's no self-serve
- * signup (see @katnor/db's src/seed.ts for how the very first account gets
- * created) - and, per @katnor/core's schemas/user.ts, no role/permission
- * tier beyond that: any logged-in user can add or remove another.
+ * Single-user account management (Settings > Account). Every procedure
+ * here requires being logged in already. There is exactly one account per
+ * install - created once at setup - so there is no list/create/remove:
+ * the owner can rename themselves and rotate their own passcode, and
+ * changing the passcode requires proving the current one first.
  */
 export const usersRouter = router({
-  list: protectedProcedure.query(async () => {
-    const rows = await userRepo.list();
-    return rows.map(toPublicUser);
+  profile: protectedProcedure.query(async () => {
+    return toPublicUser(await requireSingleUser());
   }),
 
-  create: protectedProcedure
+  updateName: protectedProcedure
+    .input(z.object({ name: z.string().trim().min(1).max(120) }))
+    .mutation(async ({ input }) => {
+      const current = await requireSingleUser();
+      await userRepo.updateName(current.id, input.name);
+      const updated = await requireSingleUser();
+      return toPublicUser(updated);
+    }),
+
+  updatePasscode: protectedProcedure
     .input(
       z.object({
-        name: z.string().min(1),
-        email: z.string().email(),
-        password: z.string().min(8),
+        currentPasscode: z.string().min(1),
+        newPasscode: z.string().min(4),
       }),
     )
     .mutation(async ({ input }) => {
-      const existing = await userRepo.getByEmail(input.email);
-      if (existing) {
-        throw new TRPCError({
-          code: 'CONFLICT',
-          message: `A user with email "${input.email}" already exists.`,
-        });
+      const current = await requireSingleUser();
+      if (!verifyPassword(input.currentPasscode, current.password_hash)) {
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Current passcode is wrong.' });
       }
-      const created = await userRepo.create(input);
-      return toPublicUser(created);
+      await userRepo.updatePasscodeHash(current.id, hashPassword(input.newPasscode));
+      return { ok: true as const };
     }),
-
-  remove: protectedProcedure.input(z.object({ id: z.string() })).mutation(async ({ input }) => {
-    const all = await userRepo.list();
-    if (all.length <= 1) {
-      throw new TRPCError({
-        code: 'BAD_REQUEST',
-        message: 'Cannot remove the last remaining user account - nobody could log in afterward.',
-      });
-    }
-    if (!all.some((row) => row.id === input.id)) {
-      throw new TRPCError({ code: 'NOT_FOUND', message: `No user "${input.id}".` });
-    }
-    await userRepo.remove(input.id);
-    return { ok: true as const };
-  }),
 });

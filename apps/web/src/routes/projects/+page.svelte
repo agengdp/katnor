@@ -86,7 +86,7 @@
   }
 </script>
 
-<div class="mx-auto flex max-w-3xl flex-col gap-6">
+<div class="p-4 sm:p-6"><div class="mx-auto flex max-w-3xl flex-col gap-6">
   <div>
     <h1 class="text-2xl font-semibold">Projects</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
@@ -185,3 +185,4 @@
     {/if}
   </section>
 </div>
+ </div>

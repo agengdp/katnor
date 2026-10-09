@@ -4,6 +4,13 @@ import { modelProviderEnum } from './enums.js';
 
 export const providerConfig = pgTable('provider_config', {
   ...baseColumns,
+  /**
+   * Owner-given connection label ("OpenAI utama", "Ollama lokal") -
+   * the identity the Model mappings and the Settings UI point at.
+   * `provider` (the type) is deliberately NOT unique: one install can
+   * hold several connections of the same type with different keys.
+   */
+  name: text('name').notNull(),
   provider: modelProviderEnum('provider').notNull(),
   // Encrypted at rest by the application layer (AES key from env) - never
   // stored in plaintext, and never selected back to the client unmasked.

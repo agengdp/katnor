@@ -160,7 +160,6 @@
     { href: '/knowledge', label: 'Knowledge', icon: 'book' },
     { href: '/artifacts', label: 'Artifacts', icon: 'folder' },
     { href: '/runs', label: 'Runs', icon: 'activity' },
-    { href: '/inbox', label: 'Inbox', icon: 'inbox' },
     { href: '/settings', label: 'Settings', icon: 'settings' },
   ];
 
@@ -168,6 +167,10 @@
     const path = $page.url.pathname;
     return path === href || path.startsWith(`${href}/`);
   }
+  // No sidebar: the nav is a bottom bar on every screen size (mobile
+  // pattern promoted to desktop), and <main> is full-bleed with no
+  // padding - each page owns its own spacing, so the Office can go
+  // edge-to-edge while form pages keep their own max-width.
 </script>
 
 {#if authChecking || authenticated === null || (authenticated === false && needsSetup === null)}
@@ -189,15 +192,17 @@
 {:else}
   <div class="flex min-h-screen flex-col bg-[var(--color-bg)] text-[var(--color-text)]">
     <header
-      class="flex items-center justify-between gap-3 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-4 py-3"
+      class="flex items-center gap-2 border-b border-[var(--color-border)] bg-[var(--color-surface)] px-3 py-1.5"
     >
-      <a href="/" class="flex items-center gap-2 text-base font-semibold tracking-tight">
-        <Icon name="factory" size="1.15em" />
+      <a href="/" class="flex items-center gap-1.5 text-sm font-semibold tracking-tight">
+        <Icon name="factory" size="1.1em" />
         <span>Katnor</span>
       </a>
 
+      <div class="flex-1"></div>
+
       <div
-        class="flex shrink-0 items-center gap-2 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-3 py-1 text-xs text-[var(--color-text-muted)]"
+        class="flex shrink-0 items-center gap-1.5 rounded-full border border-[var(--color-border)] bg-[var(--color-surface-muted)] px-2.5 py-0.5 text-xs text-[var(--color-text-muted)]"
         title="Spend so far today across all agents, against the company's daily budget"
       >
         <Icon
@@ -207,56 +212,59 @@
         />
         <span>
           {#if spend === null}
-            $0.00 today
+            $0.00
           {:else}
             ${spend.spentUsd.toFixed(2)}{spend.budgetUsd > 0
               ? ` / $${spend.budgetUsd.toFixed(2)}`
-              : ''} today
+              : ''}
           {/if}
         </span>
       </div>
 
-      <div class="flex shrink-0 items-center gap-2">
+      <div class="flex shrink-0 items-center gap-1.5">
         {#if currentUserName}
-          <span class="hidden text-xs text-[var(--color-text-muted)] sm:inline">
+          <span class="hidden text-xs text-[var(--color-text-muted)] lg:inline">
             {currentUserName}
           </span>
         {/if}
         <button
           type="button"
           onclick={logout}
-          class="flex shrink-0 items-center gap-1.5 rounded-md border border-[var(--color-border)] px-3 py-1.5 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
+          aria-label="Log out"
+          title="Log out"
+          class="flex shrink-0 items-center gap-1 rounded-md border border-[var(--color-border)] px-2 py-1 text-xs font-medium hover:bg-[var(--color-surface-muted)]"
         >
           <Icon name="logOut" />
-          Log out
+          <span class="hidden md:inline">Log out</span>
         </button>
       </div>
     </header>
 
-    <div class="flex min-h-0 flex-1 flex-col sm:flex-row">
+    <div class="flex min-h-0 flex-1 flex-col">
+      <main class="flex min-h-0 flex-1 flex-col overflow-y-auto">
+        {@render children()}
+      </main>
+
       <nav
         aria-label="Main"
-        class="order-2 flex shrink-0 gap-1 overflow-x-auto border-t border-[var(--color-border)] bg-[var(--color-surface)] p-2 sm:order-1 sm:w-56 sm:flex-col sm:overflow-x-visible sm:border-t-0 sm:border-r sm:p-3"
+        class="flex shrink-0 items-stretch justify-start gap-1 overflow-x-auto border-t border-[var(--color-border)] bg-[var(--color-surface)] px-2 py-1.5 sm:justify-center"
       >
         {#each navLinks as link (link.href)}
           <a
             href={link.href}
             aria-current={isActive(link.href) ? 'page' : undefined}
-            class="flex shrink-0 items-center gap-2 whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition-colors {isActive(
+            title={link.label}
+            class="flex shrink-0 items-center gap-1.5 whitespace-nowrap rounded-md px-3 py-1.5 text-xs font-medium transition-colors {isActive(
               link.href,
             )
               ? 'bg-[var(--color-accent)] text-[var(--color-accent-contrast)]'
               : 'text-[var(--color-text)] hover:bg-[var(--color-surface-muted)]'}"
           >
-            <Icon name={link.icon} size="1.1em" />
+            <Icon name={link.icon} size="1.15em" />
             <span>{link.label}</span>
           </a>
         {/each}
       </nav>
-
-      <main class="order-1 flex-1 overflow-y-auto p-4 sm:order-2 sm:p-6">
-        {@render children()}
-      </main>
     </div>
   </div>
 {/if}

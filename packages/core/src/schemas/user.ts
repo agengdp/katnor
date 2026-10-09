@@ -2,20 +2,18 @@ import { z } from 'zod';
 import { withBase } from './base.js';
 
 /**
- * A human who can log in (PLAN.md Phase 5's "multi-user auth"). Deliberately
- * flat - no role/permission field: every logged-in user has the same access
- * as every other (the same access "the owner" had in the single-user
- * scheme this replaces). PLAN.md never specifies a permission hierarchy
- * beyond "logged in or not," so this doesn't invent one; a role field is a
- * natural later addition if that's ever needed, not something this pass
- * builds speculatively.
+ * The single human who can log in. Single-user by design: one Katnor
+ * install has exactly one account, created once at setup, that logs in
+ * with only a passcode - no email, no password. Deliberately flat: no
+ * role/permission field, because with one user there is nobody to
+ * distinguish from.
  */
 export const userFields = {
   name: z.string().min(1),
-  email: z.string().email(),
   // scrypt hash, "<saltHex>:<hashHex>" - see @katnor/db's crypto.ts
-  // hashPassword/verifyPassword. Never sent to the client - see
-  // publicUserSchema below, which every API response actually uses.
+  // hashPassword/verifyPassword, applied to the passcode. Never sent to
+  // the client - see publicUserSchema below, which every API response
+  // actually uses.
   password_hash: z.string(),
 };
 
@@ -23,13 +21,12 @@ export const userSchema = withBase(userFields);
 export type User = z.infer<typeof userSchema>;
 
 /**
- * What a caller supplies to create an account - a raw password, hashed
- * application-side before storage.
+ * What setup supplies to create the single account - a display name and a
+ * raw passcode, the latter hashed application-side before storage.
  */
 export const createUserInputSchema = z.object({
   name: userFields.name,
-  email: userFields.email,
-  password: z.string().min(8),
+  passcode: z.string().min(4),
 });
 export type CreateUserInput = z.infer<typeof createUserInputSchema>;
 

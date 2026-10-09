@@ -1,4 +1,4 @@
-import type { ModelComboEntry } from '@katnor/core';
+import type { LegacyModelComboEntry, ModelEntry } from '@katnor/core';
 import { eq } from 'drizzle-orm';
 import { db } from '../client.js';
 import { modelCombo } from '../schema/index.js';
@@ -6,25 +6,32 @@ import { ulid } from '../ulid.js';
 
 export type ModelComboRow = typeof modelCombo.$inferSelect;
 
+/** A row's entries: new shape, or legacy `{provider, model}` pre-connections. */
+export type StoredModelEntries = (ModelEntry | LegacyModelComboEntry)[];
+
 export interface CreateModelComboInput {
   name: string;
-  entries: ModelComboEntry[];
+  entries: ModelEntry[];
+  strategy?: 'round_robin' | 'fallback' | 'router';
 }
 
-// `@katnor/core`'s modelComboEntrySchema validates `model` as a non-empty
-// string but doesn't trim it (unlike `name`, trimmed both here and in
-// apps/server's modelCombos router) - a caller that bypasses the Settings
-// UI's own trimming and sends e.g. "gpt-4 " would otherwise have that
-// padding stored and passed straight to the real provider's API, where
-// it'd likely be rejected as an unknown model id.
-function sanitizeEntries(entries: ModelComboEntry[]): ModelComboEntry[] {
+// New entries validate `model` trimmed-nonempty via the core schema, but
+// a caller bypassing the Settings UI could still send padding - sanitize
+// here so it never reaches a real provider API. Legacy entries pass
+// through untouched (read-only compat, never rewritten on read).
+function sanitizeEntries(entries: ModelEntry[]): ModelEntry[] {
   return entries.map((entry) => ({ ...entry, model: entry.model.trim() }));
 }
 
 export async function create(input: CreateModelComboInput): Promise<ModelComboRow> {
   const [created] = await db
     .insert(modelCombo)
-    .values({ id: ulid(), name: input.name.trim(), entries: sanitizeEntries(input.entries) })
+    .values({
+      id: ulid(),
+      name: input.name.trim(),
+      entries: sanitizeEntries(input.entries),
+      strategy: input.strategy ?? 'fallback',
+    })
     .returning();
   if (!created) {
     throw new Error('create(modelCombo): insert returned no row');
@@ -48,7 +55,8 @@ export async function list(): Promise<ModelComboRow[]> {
 
 export interface UpdateModelComboInput {
   name?: string;
-  entries?: ModelComboEntry[];
+  entries?: ModelEntry[];
+  strategy?: 'round_robin' | 'fallback' | 'router';
 }
 
 export async function update(
@@ -60,6 +68,7 @@ export async function update(
     .set({
       ...(patch.name !== undefined ? { name: patch.name.trim() } : {}),
       ...(patch.entries !== undefined ? { entries: sanitizeEntries(patch.entries) } : {}),
+      ...(patch.strategy !== undefined ? { strategy: patch.strategy } : {}),
       updated_at: new Date(),
     })
     .where(eq(modelCombo.id, id))

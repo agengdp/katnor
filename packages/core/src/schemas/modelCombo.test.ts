@@ -1,57 +1,70 @@
 import { describe, expect, it } from 'vitest';
-import { createModelComboInputSchema, modelComboEntrySchema } from './modelCombo.js';
+import {
+  createModelComboInputSchema,
+  legacyModelComboEntrySchema,
+  modelEntrySchema,
+} from './modelCombo.js';
 
-describe('modelComboEntrySchema', () => {
-  it('accepts a well-formed entry', () => {
-    const result = modelComboEntrySchema.safeParse({
-      provider: 'anthropic',
-      model: 'claude-sonnet-5',
+describe('modelEntrySchema', () => {
+  it('accepts a well-formed entry with default weight', () => {
+    const result = modelEntrySchema.safeParse({
+      providerConnectionId: 'conn-1',
+      model: 'gpt-5',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.weight).toBe(1);
+  });
+
+  it('accepts an explicit weight', () => {
+    const result = modelEntrySchema.safeParse({
+      providerConnectionId: 'conn-1',
+      model: 'gpt-5',
+      weight: 70,
     });
     expect(result.success).toBe(true);
   });
 
-  it.each(['anthropic', 'openai_compatible', 'google', 'ollama'] as const)(
-    'accepts every real provider ("%s")',
-    (provider) => {
-      expect(modelComboEntrySchema.safeParse({ provider, model: 'x' }).success).toBe(true);
-    },
-  );
+  it('rejects an empty model id', () => {
+    const result = modelEntrySchema.safeParse({ providerConnectionId: 'conn-1', model: '' });
+    expect(result.success).toBe(false);
+  });
 
-  it('rejects "combo" as an entry provider - a combo can never nest another combo', () => {
-    const result = modelComboEntrySchema.safeParse({
-      provider: 'combo',
-      model: 'some-other-combo',
+  it('rejects a non-positive weight', () => {
+    const result = modelEntrySchema.safeParse({
+      providerConnectionId: 'conn-1',
+      model: 'x',
+      weight: 0,
     });
     expect(result.success).toBe(false);
   });
+});
 
-  it('rejects an empty model id', () => {
-    const result = modelComboEntrySchema.safeParse({ provider: 'anthropic', model: '' });
-    expect(result.success).toBe(false);
-  });
-
-  it('rejects an unrecognized provider string', () => {
-    const result = modelComboEntrySchema.safeParse({ provider: 'not-a-real-provider', model: 'x' });
-    expect(result.success).toBe(false);
+describe('legacyModelComboEntrySchema', () => {
+  it('accepts the old {provider, model} shape', () => {
+    const result = legacyModelComboEntrySchema.safeParse({
+      provider: 'anthropic',
+      model: 'claude-sonnet-5',
+    });
+    expect(result.success).toBe(true);
   });
 });
 
 describe('createModelComboInputSchema', () => {
   it('accepts a name with a single entry', () => {
     const result = createModelComboInputSchema.safeParse({
-      name: 'claude-opus-combo',
-      entries: [{ provider: 'anthropic', model: 'claude-opus-5' }],
+      name: 'coding',
+      entries: [{ providerConnectionId: 'conn-1', model: 'gpt-5' }],
     });
     expect(result.success).toBe(true);
   });
 
-  it('accepts multiple ordered entries', () => {
+  it('accepts multiple weighted entries', () => {
     const result = createModelComboInputSchema.safeParse({
-      name: 'claude-opus-combo',
+      name: 'coding',
+      strategy: 'round_robin',
       entries: [
-        { provider: 'anthropic', model: 'claude-opus-5' },
-        { provider: 'google', model: 'gemini-2.5-pro' },
-        { provider: 'ollama', model: 'llama3' },
+        { providerConnectionId: 'conn-1', model: 'gpt-5', weight: 70 },
+        { providerConnectionId: 'conn-2', model: 'qwen3', weight: 30 },
       ],
     });
     expect(result.success).toBe(true);
@@ -65,7 +78,7 @@ describe('createModelComboInputSchema', () => {
   it('rejects an empty name', () => {
     const result = createModelComboInputSchema.safeParse({
       name: '',
-      entries: [{ provider: 'anthropic', model: 'claude-opus-5' }],
+      entries: [{ providerConnectionId: 'conn-1', model: 'gpt-5' }],
     });
     expect(result.success).toBe(false);
   });

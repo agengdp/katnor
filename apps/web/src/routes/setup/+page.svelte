@@ -7,8 +7,8 @@
    * First-run setup, in the browser.
    *
    * Before this existed, a fresh `docker compose up` gave you a stack with
-   * no account and no way to make one from the UI - the first user could
-   * only come from `pnpm db:seed` with a pre-hashed `OWNER_PASSWORD_HASH`,
+   * no account and no way to make one from the UI - the single user could
+   * only come from `pnpm db:seed` with a pre-hashed `OWNER_PASSCODE_HASH`,
    * which needs a terminal, a checkout, and knowing how to produce a scrypt
    * hash. This is the other door: start the stack, open the dashboard, fill
    * in three short steps.
@@ -39,7 +39,7 @@
     {
       title: 'Your account',
       blurb:
-        'The first account, and the only one that can be created without logging in. Everyone else is invited from Settings afterwards.',
+        'The single account for this install, created once here. Log in later with just the passcode.',
       icon: 'users',
     },
     {
@@ -66,9 +66,8 @@
 
   let companyName = $state('Katnor Inc.');
   let ownerName = $state('');
-  let ownerEmail = $state('');
-  let ownerPassword = $state('');
-  let ownerPasswordConfirm = $state('');
+  let ownerPasscode = $state('');
+  let ownerPasscodeConfirm = $state('');
   let providerName = $state<ProviderName>('anthropic');
   let apiKey = $state('');
 
@@ -110,13 +109,10 @@
     }
     if (index === 1) {
       if (ownerName.trim().length === 0) return 'Enter your name.';
-      if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(ownerEmail.trim())) {
-        return 'Enter a valid email address.';
-      }
       // Matches the server's own rule (@katnor/core's createUserInputSchema),
       // so this never rejects something the server would accept or vice versa.
-      if (ownerPassword.length < 8) return 'Password must be at least 8 characters.';
-      if (ownerPassword !== ownerPasswordConfirm) return 'The two passwords do not match.';
+      if (ownerPasscode.length < 4) return 'Passcode must be at least 4 characters.';
+      if (ownerPasscode !== ownerPasscodeConfirm) return 'The two passcodes do not match.';
       return null;
     }
     return null;
@@ -156,8 +152,7 @@
       await trpc().setup.complete.mutate({
         companyName: companyName.trim(),
         ownerName: ownerName.trim(),
-        ownerEmail: ownerEmail.trim(),
-        ownerPassword,
+        ownerPasscode,
         ...(apiKey.trim().length > 0
           ? { provider: { name: providerName, apiKey: apiKey.trim() } }
           : {}),
@@ -226,8 +221,8 @@ pnpm --filter @katnor/db db:post-migrate</pre>
         Already set up
       </h1>
       <p class="text-sm text-[var(--color-text-muted)]">
-        This install already has an account, so setup is closed. Log in instead — or, if you have
-        lost access, add an account from another logged-in session under Settings &gt; Team members.
+        This install already has its account, so setup is closed. Log in with your passcode
+        instead.
       </p>
       <a
         href="/login"
@@ -307,31 +302,21 @@ pnpm --filter @katnor/db db:post-migrate</pre>
           <input bind:value={ownerName} autocomplete="name" required class={inputClass} />
         </label>
         <label class="flex flex-col gap-1 text-sm">
-          <span class="text-[var(--color-text-muted)]">Email</span>
-          <input
-            type="email"
-            bind:value={ownerEmail}
-            autocomplete="username"
-            required
-            class={inputClass}
-          />
-        </label>
-        <label class="flex flex-col gap-1 text-sm">
-          <span class="text-[var(--color-text-muted)]">Password</span>
+          <span class="text-[var(--color-text-muted)]">Passcode</span>
           <input
             type="password"
-            bind:value={ownerPassword}
+            bind:value={ownerPasscode}
             autocomplete="new-password"
             required
             class={inputClass}
           />
-          <span class="text-xs text-[var(--color-text-muted)]">At least 8 characters.</span>
+          <span class="text-xs text-[var(--color-text-muted)]">At least 4 characters.</span>
         </label>
         <label class="flex flex-col gap-1 text-sm">
-          <span class="text-[var(--color-text-muted)]">Confirm password</span>
+          <span class="text-[var(--color-text-muted)]">Confirm passcode</span>
           <input
             type="password"
-            bind:value={ownerPasswordConfirm}
+            bind:value={ownerPasscodeConfirm}
             autocomplete="new-password"
             required
             class={inputClass}

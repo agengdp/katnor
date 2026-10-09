@@ -56,13 +56,20 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         model: {
           type: 'object',
           properties: {
-            provider: { type: 'string', enum: [...MODEL_PROVIDERS] },
-            model: { type: 'string' },
+            provider: {
+              type: 'string',
+              enum: ['combo'],
+              description: 'Always "combo" - hires go through a named Model mapping.',
+            },
+            model: {
+              type: 'string',
+              description: 'A named Model from Settings > Models (e.g. "coding").',
+            },
             effort: { type: 'string', enum: [...MODEL_EFFORTS] },
             thinking_display: { type: 'string', enum: [...THINKING_DISPLAY_MODES] },
             max_tokens: { type: 'number' },
           },
-          required: ['provider', 'model', 'effort'],
+          required: ['model', 'effort'],
         },
         tools: {
           type: 'array',
@@ -106,16 +113,33 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
 
       const provider = str(modelInput, 'provider');
       const modelId = str(modelInput, 'model');
-      const effort = str(modelInput, 'effort');
-      if (!provider || !(MODEL_PROVIDERS as readonly string[]).includes(provider)) {
+      // Linked to Settings > Models: agents hire onto a named Model
+      // mapping (provider "combo" under the hood). `model.provider` is
+      // accepted but must be "combo" (or omitted) - a raw provider
+      // type + model id bypasses the Model routing entirely.
+      if (provider && provider !== 'combo') {
         return {
-          content: `hire_agent: model.provider must be one of ${MODEL_PROVIDERS.join(', ')}.`,
+          content:
+            'hire_agent: model.provider must be "combo" - pick a named Model from Settings > Models ' +
+            'for model.model instead of a raw provider type.',
           isError: true,
         };
       }
       if (!modelId) {
-        return { content: 'hire_agent: model.model is required.', isError: true };
+        return {
+          content: 'hire_agent: model.model is required - a named Model from Settings > Models.',
+          isError: true,
+        };
       }
+      const { modelComboRepo } = await import('@katnor/db');
+      const named = await modelComboRepo.getByName(modelId.trim());
+      if (!named) {
+        return {
+          content: `hire_agent: no model named "${modelId}" - create it in Settings > Models first.`,
+          isError: true,
+        };
+      }
+      const effort = str(modelInput, 'effort');
       if (!effort || !(MODEL_EFFORTS as readonly string[]).includes(effort)) {
         return {
           content: `hire_agent: model.effort must be one of ${MODEL_EFFORTS.join(', ')}.`,
@@ -142,7 +166,7 @@ export const orgTools: ToolDefinition<AgentToolContext>[] = [
         system_prompt: systemPrompt,
         avatar: str(input, 'avatar') ?? 'default',
         model: {
-          provider,
+          provider: 'combo',
           model: modelId,
           effort,
           thinking_display: thinkingDisplay,

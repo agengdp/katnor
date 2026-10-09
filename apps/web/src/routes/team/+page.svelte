@@ -167,14 +167,20 @@
     }
     try {
       const client = trpc();
-      const [agentRows, teamRows, comboRows] = await Promise.all([
+      const [agentRows, teamRows, comboRows, defaultRow] = await Promise.all([
         client.agents.list.query(),
         client.teams.list.query(),
         client.modelCombos.list.query(),
+        client.settings.getDefaultModel.query().catch(() => ({ name: null })),
       ]);
       agents = agentRows as unknown as AgentRow[];
       teams = teamRows as unknown as TeamRow[];
       modelCombos = comboRows as unknown as { id: string; name: string }[];
+      // Pre-select the default Model in a fresh hire draft - the owner
+      // can still pick another, but the common case is one click less.
+      // Never clobber an in-progress draft on background refreshes.
+      const def = (defaultRow as { name: string | null }).name;
+      if (def && !hireOpen && hireDraft.model === '') hireDraft.model = def;
       for (const agent of agents) liveStatusStore.seedFromAgentStatus(agent.id, agent.status);
     } catch (err) {
       // A background refresh (triggered by a live event, or right after a
@@ -268,7 +274,7 @@
     strengths: string;
     style: string;
     system_prompt: string;
-    provider: ModelProvider;
+    provider: 'combo';
     model: string;
     effort: ModelEffort;
     thinking_display: ThinkingDisplayMode;
@@ -290,6 +296,11 @@
     }
     editError = null;
     editSaved = false;
+    // Legacy agents hired onto a raw provider type (pre-Models) open
+    // with provider forced to "combo" and an empty model: the old
+    // `{provider, model-id}` pair has no Model equivalent to pre-select,
+    // so the owner picks the named mapping explicitly on save.
+    const legacyDirect = agent.model_config.provider !== 'combo';
     editDraft = {
       agentId: agent.id,
       title: agent.title,
@@ -298,8 +309,8 @@
       strengths: agent.persona.strengths.join(', '),
       style: agent.persona.style,
       system_prompt: agent.system_prompt,
-      provider: agent.model_config.provider,
-      model: agent.model_config.model,
+      provider: 'combo',
+      model: legacyDirect ? '' : agent.model_config.model,
       effort: agent.model_config.effort,
       thinking_display: agent.model_config.thinking_display,
       max_tokens: agent.model_config.max_tokens,
@@ -362,7 +373,7 @@
     style: string;
     system_prompt: string;
     avatar: string;
-    provider: ModelProvider;
+    provider: 'combo';
     model: string;
     effort: ModelEffort;
     max_tokens: number;
@@ -381,7 +392,11 @@
       style: '',
       system_prompt: '',
       avatar: '',
-      provider: 'anthropic',
+      // Linked to Settings > Models: the hire form picks a named Model
+      // mapping (provider is always "combo" under the hood). Direct
+      // provider+model-id hires are gone - every model choice flows
+      // through a Model so round-robin/fallback applies uniformly.
+      provider: 'combo',
       model: '',
       effort: 'medium',
       max_tokens: 4096,
@@ -573,36 +588,19 @@
 
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Provider</span>
-            <select
-              value={draft.provider}
-              onchange={(e) => {
-                draft.provider = (e.currentTarget as HTMLSelectElement).value as ModelProvider;
-                // The "Model" field below switches between free text and a
-                // combo-name dropdown depending on provider - a value typed
-                // for one shape (e.g. a real model id) would silently not
-                // match any <option> in the other, so clear it on switch
-                // rather than leaving a stale, invisible-mismatch value.
-                draft.model = '';
-              }}
-              class={inputClass}
-            >
-              {#each MODEL_PROVIDERS as p (p)}
-                <option value={p}>{providerLabels[p]}</option>
+            <span class="text-[var(--color-text-muted)]">Model</span>
+            <select required bind:value={draft.model} class={inputClass}>
+              <option value="" disabled>Select a model…</option>
+              {#each modelCombos as combo (combo.id)}
+                <option value={combo.name}>{combo.name}</option>
               {/each}
             </select>
-          </label>
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Model</span>
-            {#if draft.provider === 'combo'}
-              <select required bind:value={draft.model} class={inputClass}>
-                <option value="" disabled>Select a combo…</option>
-                {#each modelCombos as combo (combo.id)}
-                  <option value={combo.name}>{combo.name}</option>
-                {/each}
-              </select>
-            {:else}
-              <input type="text" required bind:value={draft.model} class={inputClass} />
+            {#if modelCombos.length === 0}
+              <span class="text-xs text-[var(--color-text-muted)]"
+                >No models yet - create one in <a href="/settings" class="underline"
+                  >Settings &gt; Models</a
+                > first.</span
+              >
             {/if}
           </label>
           <label class={labelClass}>
@@ -678,7 +676,7 @@
   </div>
 {/snippet}
 
-<div class="mx-auto flex w-full max-w-4xl flex-col gap-6">
+<div class="mx-auto flex w-full max-w-4xl flex-col gap-6 p-4 sm:p-6">
   <div>
     <h1 class="text-2xl font-semibold">Team</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">
@@ -812,37 +810,19 @@
 
         <div class="grid grid-cols-1 gap-3 sm:grid-cols-2">
           <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Provider</span>
-            <select
-              value={hireDraft.provider}
-              onchange={(e) => {
-                hireDraft.provider = (e.currentTarget as HTMLSelectElement).value as ModelProvider;
-                hireDraft.model = '';
-              }}
-              class={inputClass}
-            >
-              {#each MODEL_PROVIDERS as p (p)}
-                <option value={p}>{providerLabels[p]}</option>
+            <span class="text-[var(--color-text-muted)]">Model</span>
+            <select required bind:value={hireDraft.model} class={inputClass}>
+              <option value="" disabled>Select a model…</option>
+              {#each modelCombos as combo (combo.id)}
+                <option value={combo.name}>{combo.name}</option>
               {/each}
             </select>
-          </label>
-          <label class={labelClass}>
-            <span class="text-[var(--color-text-muted)]">Model</span>
-            {#if hireDraft.provider === 'combo'}
-              <select required bind:value={hireDraft.model} class={inputClass}>
-                <option value="" disabled>Select a combo…</option>
-                {#each modelCombos as combo (combo.id)}
-                  <option value={combo.name}>{combo.name}</option>
-                {/each}
-              </select>
-            {:else}
-              <input
-                type="text"
-                required
-                placeholder="e.g. claude-sonnet-4-5"
-                bind:value={hireDraft.model}
-                class={inputClass}
-              />
+            {#if modelCombos.length === 0}
+              <span class="text-xs text-[var(--color-text-muted)]"
+                >No models yet - create one in <a href="/settings" class="underline"
+                  >Settings &gt; Models</a
+                > first.</span
+              >
             {/if}
           </label>
           <label class={labelClass}>

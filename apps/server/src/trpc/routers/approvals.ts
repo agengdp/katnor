@@ -13,7 +13,19 @@ import { protectedProcedure, router } from '../trpc.js';
 export const approvalsRouter = router({
   list: protectedProcedure
     .input(z.object({ status: z.enum(APPROVAL_STATUSES).optional() }))
-    .query(({ input }) => approvalRepo.list(input.status)),
+    .query(async ({ input }) => {
+      const rows = await approvalRepo.list(input.status);
+      // Attach the asking agent + channel per row so Chat can render a
+      // pending approval inline in the thread as that agent's message
+      // (no extra round trips per card from the client).
+      const runIds = [...new Set(rows.map((r) => r.run_id))];
+      const runs = await Promise.all(runIds.map((id) => runRepo.getById(id)));
+      const runById = new Map(runs.filter((r) => r).map((r) => [r!.id, r!]));
+      return rows.map((row) => {
+        const run = runById.get(row.run_id);
+        return { ...row, agent_id: run?.agent_id ?? null, channel_id: run?.channel_id ?? null };
+      });
+    }),
 
   getById: protectedProcedure
     .input(z.object({ id: z.string() }))

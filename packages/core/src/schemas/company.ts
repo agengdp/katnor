@@ -1,7 +1,6 @@
 import { z } from 'zod';
 import { APPROVAL_KINDS } from '../enums.js';
 import { withBase } from './base.js';
-import { modelConfigSchema } from './modelConfig.js';
 
 export const APPROVAL_MODES = ['auto', 'ask_once_per_project', 'always_ask'] as const;
 export const approvalModeSchema = z.enum(APPROVAL_MODES);
@@ -25,7 +24,14 @@ export const companyBudgetsSchema = z.object({
 export type CompanyBudgets = z.infer<typeof companyBudgetsSchema>;
 
 export const companySettingsSchema = z.object({
-  default_model: modelConfigSchema,
+  /**
+   * The named Model (Settings > Models) new hires default to - a plain
+   * name, not an inline `{provider, model}` pair: every agent resolves
+   * through a Model mapping so routing/fallback applies uniformly.
+   * `null` (fresh install before any Model exists) means "no default" -
+   * hire forms force an explicit pick instead of guessing.
+   */
+  default_model: z.string().min(1).nullable(),
   budgets: companyBudgetsSchema,
   approval_policy: approvalPolicySchema,
 });
@@ -51,13 +57,11 @@ export type CreateCompanyInput = z.infer<typeof createCompanyInputSchema>;
  * assume every key is present.
  */
 export const DEFAULT_COMPANY_SETTINGS: CompanySettings = {
-  default_model: {
-    provider: 'anthropic',
-    model: 'claude-opus-5',
-    effort: 'high',
-    thinking_display: 'omitted',
-    max_tokens: 8192,
-  },
+  // Null until the bootstrap "default" Model exists (see @katnor/db's
+  // bootstrap.ts) or the owner picks one in Settings > Models - hire
+  // callers fall back to a Model named "default" when this is null so a
+  // fresh install still hires onto something real.
+  default_model: null,
   budgets: {
     company_daily_usd: 50,
   },

@@ -13,6 +13,7 @@
 // best-effort part.
 import Anthropic from '@anthropic-ai/sdk';
 import type { ModelProvider } from '@katnor/core';
+import { decryptSecret, type ProviderConfigRow } from '@katnor/db';
 import { estimateCostUsd } from './pricing.js';
 import type {
   ContentBlock,
@@ -54,13 +55,14 @@ import type {
 
 let cachedClient: Anthropic | undefined;
 
-function getClient(): Anthropic {
+function getClient(apiKey?: string): Anthropic {
   // Reads ANTHROPIC_API_KEY from the environment by default. Per-agent
   // provider overrides (a different key/base URL from `provider_config`,
   // decrypted by apps/server) are a Phase 5 concern (PLAN.md Phase 5:
   // "OpenAI-compatible and Google provider adapters" is where per-provider
   // credential plumbing gets built out generally) - every agent uses the
   // one company-wide Anthropic key for now.
+  if (apiKey) return new Anthropic({ apiKey });
   cachedClient ??= new Anthropic();
   return cachedClient;
 }
@@ -344,6 +346,16 @@ function toStopReason(anthropicStopReason: string | null): StepStopReason {
 
 export class AnthropicProvider implements LLMProvider {
   readonly id: ModelProvider = 'anthropic';
+  private readonly connection: ProviderConfigRow | undefined;
+
+  /**
+   * `connection` binds this instance to one `provider_config` row
+   * (a Model entry's connection) - `step()` uses that row's key instead
+   * of `ANTHROPIC_API_KEY`. Unbound (no arg) preserves the old behavior.
+   */
+  constructor(connection?: ProviderConfigRow) {
+    this.connection = connection;
+  }
 
   capabilities(model: string): ProviderCapabilities {
     const profile = resolveModelProfile(model);
@@ -427,7 +439,10 @@ export class AnthropicProvider implements LLMProvider {
 
     let response: Anthropic.Beta.BetaMessage;
     try {
-      const stream = getClient().beta.messages.stream(requestBody);
+      const apiKey = this.connection?.api_key_encrypted
+        ? decryptSecret(this.connection.api_key_encrypted)
+        : undefined;
+      const stream = getClient(apiKey).beta.messages.stream(requestBody);
       response = await stream.finalMessage();
     } catch (err) {
       if (err instanceof Anthropic.APIError) {

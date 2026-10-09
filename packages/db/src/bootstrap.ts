@@ -26,6 +26,7 @@ import { hashPassword } from './crypto.js';
 import * as agentRepo from './repositories/agent.js';
 import * as channelRepo from './repositories/channel.js';
 import * as companyRepo from './repositories/company.js';
+import * as modelComboRepo from './repositories/modelCombo.js';
 import type { UserRow } from './repositories/user.js';
 import { company, user } from './schema/index.js';
 import { ulid } from './ulid.js';
@@ -33,8 +34,13 @@ import { ulid } from './ulid.js';
 export const DEFAULT_COMPANY_NAME = 'Katnor Inc.';
 
 const CEO_MODEL_CONFIG: ModelConfig = {
-  provider: 'anthropic',
-  model: 'claude-opus-5',
+  // Linked to Settings > Models: the CEO hires onto the default Model
+  // (resolved in ensureCompanyBootstrap below via resolveDefaultModelName),
+  // so routing, round-robin and servedBy apply to the CEO like every
+  // other agent. This constant is only the shape fallback - the `model`
+  // name is overwritten with the resolved default before insert.
+  provider: 'combo',
+  model: 'default',
   effort: 'high',
   thinking_display: 'omitted',
   max_tokens: 8192,
@@ -115,8 +121,17 @@ export interface CompanyBootstrapResult {
 }
 
 /**
- * Ensures the company row, the system CEO agent and `#general` all exist.
- * Safe to run repeatedly - every step is a get-or-create.
+ * Ensures the company row, the default Model, the system CEO agent and
+ * `#general` all exist. Safe to run repeatedly - every step is a
+ * get-or-create.
+ *
+ * The "default" Model is the legacy-compat entry point: a single
+ * `{provider: "anthropic", model: "claude-opus-5"}` entry in fallback
+ * strategy, resolved at call time to the default Anthropic connection
+ * (or `ANTHROPIC_API_KEY` when none exists yet). The CEO hires onto it,
+ * and it gives a fresh install a working Model before the owner opens
+ * Settings > Models. Never overwritten once created - the owner owns it
+ * from there.
  */
 export async function ensureCompanyBootstrap(
   companyName: string = DEFAULT_COMPANY_NAME,
@@ -135,7 +150,20 @@ export async function ensureCompanyBootstrap(
   const agents = await agentRepo.list();
   const existingCeo = agents.find((a) => a.is_system);
   let ceoCreated = false;
+  // The default Model must exist before the CEO that hires onto it.
+  // Legacy `{provider, model}` entry on purpose: at bootstrap time no
+  // connection row can exist yet, and this shape resolves to the default
+  // connection (or env key) at call time - see @katnor/llm's router.
+  const existingDefault = await modelComboRepo.getByName('default');
+  if (!existingDefault) {
+    await modelComboRepo.create({
+      name: 'default',
+      entries: [{ provider: 'anthropic', model: 'claude-opus-5' } as never],
+      strategy: 'fallback',
+    });
+  }
   if (!existingCeo) {
+    const defaultModel = await resolveDefaultModelName();
     await agentRepo.create({
       name: 'Nadia Reyes',
       title: 'CEO',
@@ -147,7 +175,7 @@ export async function ensureCompanyBootstrap(
       avatar: 'ceo',
       reports_to: null,
       team_id: null,
-      model_config: CEO_MODEL_CONFIG,
+      model_config: { ...CEO_MODEL_CONFIG, model: defaultModel ?? CEO_MODEL_CONFIG.model },
       tool_allowlist: CEO_TOOL_ALLOWLIST,
       status: 'active',
       budget_daily_usd: '25.00',
@@ -167,11 +195,29 @@ export async function ensureCompanyBootstrap(
   };
 }
 
+/**
+ * The Model name new hires (and the CEO) default to: the company's
+ * `settings.default_model` when set, else a Model literally named
+ * "default" when one exists (bootstrap creates it), else null.
+ * Centralizes the fallback chain so bootstrap, hire paths and the UI
+ * agree on what "default" means instead of each hardcoding it.
+ */
+export async function resolveDefaultModelName(): Promise<string | null> {
+  const settings = await companyRepo.getSettings();
+  if (settings.default_model) {
+    const named = await modelComboRepo.getByName(settings.default_model);
+    if (named) return named.name;
+    // Stale pointer (Model renamed/removed) - fall through to the
+    // "default"-named Model rather than hiring onto a ghost.
+  }
+  const fallback = await modelComboRepo.getByName('default');
+  return fallback?.name ?? null;
+}
+
 export interface CreateFirstUserInput {
   name: string;
-  email: string;
-  /** Raw password - hashed here. */
-  password: string;
+  /** Raw passcode - hashed here. */
+  passcode: string;
 }
 
 /**
@@ -188,9 +234,10 @@ const SETUP_ADVISORY_LOCK_KEY = 4820771;
  * This is the security boundary of the whole setup flow. `setup.complete`
  * is necessarily a *public* endpoint - the first account cannot require
  * being logged in to create - so the only thing standing between a fresh
- * install and anyone on the network claiming it is this check. Once one
- * account exists the door closes permanently, and every account after it
- * is created by an already-logged-in user through Settings > Team members.
+ * install and anyone on the network claiming it is this check. Once the
+ * single account exists the door closes permanently - there is no second
+ * account to create, ever (single-user install: Settings only changes the
+ * existing passcode).
  *
  * The check and the insert run in one transaction holding
  * `pg_advisory_xact_lock`, rather than a plain "select then insert":
@@ -198,7 +245,8 @@ const SETUP_ADVISORY_LOCK_KEY = 4820771;
  *   - At READ COMMITTED, two concurrent requests would both see zero rows
  *     and both insert - two owners, neither aware of the other.
  *   - A unique constraint on `email` does not help, because the racers can
- *     submit different addresses.
+ *     submit different addresses. (Historical note: the pre-passcode
+ *     schema had an email column; the advisory lock predates its removal.)
  *   - The advisory lock makes the second request wait for the first to
  *     commit, at which point it sees the row and is rejected.
  *
@@ -221,8 +269,7 @@ export async function createFirstUser(input: CreateFirstUserInput): Promise<User
       .values({
         id: ulid(),
         name: input.name.trim(),
-        email: input.email.trim().toLowerCase(),
-        password_hash: hashPassword(input.password),
+        password_hash: hashPassword(input.passcode),
       })
       .returning();
     if (!created) {
@@ -233,14 +280,13 @@ export async function createFirstUser(input: CreateFirstUserInput): Promise<User
 }
 
 /**
- * Creates the first user account from an already-computed password hash -
- * the `OWNER_PASSWORD_HASH` path `pnpm db:seed` uses, where the operator
- * hashed the password themselves and the raw one never reaches this
+ * Creates the first user account from an already-computed passcode hash -
+ * the `OWNER_PASSCODE_HASH` path `pnpm db:seed` uses, where the operator
+ * hashed the passcode themselves and the raw one never reaches this
  * process. Identical guarantees to `createFirstUser`; see its comment.
  */
 export async function createFirstUserWithPasswordHash(input: {
   name: string;
-  email: string;
   passwordHash: string;
 }): Promise<UserRow> {
   return db.transaction(async (tx) => {
@@ -256,7 +302,6 @@ export async function createFirstUserWithPasswordHash(input: {
       .values({
         id: ulid(),
         name: input.name.trim(),
-        email: input.email.trim().toLowerCase(),
         password_hash: input.passwordHash,
       })
       .returning();

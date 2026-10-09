@@ -1,4 +1,4 @@
-import { asc, eq } from 'drizzle-orm';
+import { eq } from 'drizzle-orm';
 import { hashPassword } from '../crypto.js';
 import { db } from '../client.js';
 import { user } from '../schema/index.js';
@@ -6,23 +6,14 @@ import { ulid } from '../ulid.js';
 
 export type UserRow = typeof user.$inferSelect;
 
-/**
- * Trims and lowercases so lookup/uniqueness don't depend on how an
- * address was capitalized when typed.
- */
-function normalizeEmail(email: string): string {
-  return email.trim().toLowerCase();
-}
-
 export interface CreateUserInput {
   name: string;
-  email: string;
   /**
-   * A raw password - hashed here before storage. Use
+   * A raw passcode - hashed here before storage. Use
    * `createWithPasswordHash` instead when you already have a hash (e.g.
-   * `db:seed`'s `OWNER_PASSWORD_HASH` bootstrap).
+   * `db:seed`'s `OWNER_PASSCODE_HASH` bootstrap).
    */
-  password: string;
+  passcode: string;
 }
 
 export async function create(input: CreateUserInput): Promise<UserRow> {
@@ -31,8 +22,7 @@ export async function create(input: CreateUserInput): Promise<UserRow> {
     .values({
       id: ulid(),
       name: input.name.trim(),
-      email: normalizeEmail(input.email),
-      password_hash: hashPassword(input.password),
+      password_hash: hashPassword(input.passcode),
     })
     .returning();
   if (!created) {
@@ -43,7 +33,6 @@ export async function create(input: CreateUserInput): Promise<UserRow> {
 
 export interface CreateUserWithPasswordHashInput {
   name: string;
-  email: string;
   /**
    * Already in the `"<saltHex>:<hashHex>"` format ../crypto.ts's
    * `hashPassword` produces - not re-hashed.
@@ -53,8 +42,8 @@ export interface CreateUserWithPasswordHashInput {
 
 /**
  * For `src/seed.ts`'s one-time bootstrap only, where the hash already
- * exists (`OWNER_PASSWORD_HASH`) - every other caller should use `create`
- * with a raw password instead.
+ * exists (`OWNER_PASSCODE_HASH`) - every other caller should use `create`
+ * with a raw passcode instead.
  */
 export async function createWithPasswordHash(
   input: CreateUserWithPasswordHashInput,
@@ -64,7 +53,6 @@ export async function createWithPasswordHash(
     .values({
       id: ulid(),
       name: input.name.trim(),
-      email: normalizeEmail(input.email),
       password_hash: input.passwordHash,
     })
     .returning();
@@ -79,23 +67,28 @@ export async function getById(id: string): Promise<UserRow | undefined> {
   return row;
 }
 
-export async function getByEmail(email: string): Promise<UserRow | undefined> {
-  const [row] = await db
-    .select()
-    .from(user)
-    .where(eq(user.email, normalizeEmail(email)))
-    .limit(1);
+/**
+ * The single account, if setup has completed. Single-user means "the
+ * user" is unambiguous - callers that need whoever owns this install
+ * (login) use this instead of looking anyone up by identifier.
+ */
+export async function getSingleUser(): Promise<UserRow | undefined> {
+  const [row] = await db.select().from(user).limit(1);
   return row;
 }
 
 /**
- * Oldest first - the first user ever created (typically the bootstrapped
- * owner) reads naturally as "first" in a list.
+ * Renames the single account. Used by the logged-in owner editing their
+ * own display name in Settings.
  */
-export async function list(): Promise<UserRow[]> {
-  return db.select().from(user).orderBy(asc(user.created_at));
+export async function updateName(id: string, name: string): Promise<void> {
+  await db.update(user).set({ name: name.trim() }).where(eq(user.id, id));
 }
 
-export async function remove(id: string): Promise<void> {
-  await db.delete(user).where(eq(user.id, id));
+/**
+ * Replaces the single account's passcode hash. Used by the logged-in
+ * owner changing their own passcode in Settings.
+ */
+export async function updatePasscodeHash(id: string, passwordHash: string): Promise<void> {
+  await db.update(user).set({ password_hash: passwordHash }).where(eq(user.id, id));
 }

@@ -323,7 +323,7 @@
   }
 </script>
 
-<div class="flex flex-col gap-6">
+<div class="flex flex-col gap-6 p-4 sm:p-6">
   <a
     href="/projects"
     class="flex items-center gap-1.5 self-start text-sm text-[var(--color-text-muted)] hover:underline"

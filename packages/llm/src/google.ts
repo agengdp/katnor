@@ -1,5 +1,5 @@
 import type { ModelProvider } from '@katnor/core';
-import { decryptSecret, providerConfigRepo } from '@katnor/db';
+import { decryptSecret, providerConfigRepo, type ProviderConfigRow } from '@katnor/db';
 import { estimateCostFromRates, numericColumnToRate } from './pricing.js';
 import type {
   ContentBlock,
@@ -55,16 +55,21 @@ interface ResolvedConfig {
   outputCostPerMtok: number | null;
 }
 
-async function readConfig(): Promise<ResolvedConfig | { error: string }> {
+async function readConfig(
+  connection?: ProviderConfigRow,
+): Promise<ResolvedConfig | { error: string }> {
   try {
-    const row = await providerConfigRepo.getByProvider('google');
+    // A bound connection (Model entry addressing a specific connection)
+    // is authoritative - the router already checked enabled/exists, so
+    // this only re-reads the row's credentials, never re-resolves.
+    const row = connection ?? (await providerConfigRepo.getByProvider('google'));
     if (!row) {
       return {
         error:
           'No "google" provider is configured yet - add an API key under Settings > Providers.',
       };
     }
-    if (!row.enabled) {
+    if (!connection && !row.enabled) {
       return { error: 'The "google" provider is disabled in Settings > Providers.' };
     }
     if (!row.api_key_encrypted) {
@@ -211,6 +216,17 @@ function errorResult(errorMessage: string): StepResult {
 
 export class GoogleProvider implements LLMProvider {
   readonly id: ModelProvider = 'google';
+  private readonly connection: ProviderConfigRow | undefined;
+
+  /**
+   * `connection` binds this instance to one `provider_config` row
+   * (a Model entry's connection) - `step()` reads that row's key/base
+   * URL instead of the provider type's default row. Unbound (no arg)
+   * preserves the old behavior: resolve the default "google" row.
+   */
+  constructor(connection?: ProviderConfigRow) {
+    this.connection = connection;
+  }
 
   capabilities(_model: string): ProviderCapabilities {
     // No per-model profile table (unlike ./anthropic.ts): Gemini's context
@@ -231,7 +247,7 @@ export class GoogleProvider implements LLMProvider {
   }
 
   async step(input: StepInput): Promise<StepResult> {
-    const config = await readConfig();
+    const config = await readConfig(this.connection);
     if ('error' in config) {
       return errorResult(config.error);
     }

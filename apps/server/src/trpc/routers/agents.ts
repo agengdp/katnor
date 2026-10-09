@@ -1,21 +1,33 @@
-import {
-  AGENT_STATUSES,
-  MODEL_EFFORTS,
-  MODEL_PROVIDERS,
-  THINKING_DISPLAY_MODES,
-} from '@katnor/core';
-import { agentRepo, eventRepo } from '@katnor/db';
+import { AGENT_STATUSES, MODEL_EFFORTS, THINKING_DISPLAY_MODES } from '@katnor/core';
+import { agentRepo, eventRepo, modelComboRepo } from '@katnor/db';
+import { TRPCError } from '@trpc/server';
 import { z } from 'zod';
 import { protectedProcedure, router } from '../trpc.js';
 
+/**
+ * Every hire/update flows through a named Model (Settings > Models):
+ * `provider` is always "combo", `model` is the Model's name. The name
+ * is validated to exist here so a typo/removed Model fails at write
+ * time, not as a dead agent at runtime.
+ */
 const modelConfigInputSchema = z.object({
-  provider: z.enum(MODEL_PROVIDERS),
+  provider: z.literal('combo'),
   model: z.string().min(1),
   effort: z.enum(MODEL_EFFORTS),
   thinking_display: z.enum(THINKING_DISPLAY_MODES),
   max_tokens: z.number().int().positive(),
   temperature: z.number().min(0).max(2).optional(),
 });
+
+async function assertModelExists(name: string): Promise<void> {
+  const model = await modelComboRepo.getByName(name.trim());
+  if (!model) {
+    throw new TRPCError({
+      code: 'BAD_REQUEST',
+      message: `No model named "${name}" - create it in Settings > Models first.`,
+    });
+  }
+}
 
 const personaInputSchema = z.object({
   bio: z.string(),
@@ -60,6 +72,7 @@ export const agentsRouter = router({
       }),
     )
     .mutation(async ({ input }) => {
+      await assertModelExists(input.model.model);
       const created = await agentRepo.create({
         name: input.name,
         title: input.title,
@@ -100,7 +113,10 @@ export const agentsRouter = router({
     .mutation(async ({ input }) => {
       const { id, model, tools, budget_daily_usd, ...rest } = input;
       const patch: Parameters<typeof agentRepo.update>[1] = { ...rest };
-      if (model) patch.model_config = model;
+      if (model) {
+        await assertModelExists(model.model);
+        patch.model_config = model;
+      }
       if (tools) patch.tool_allowlist = tools;
       if (budget_daily_usd !== undefined) patch.budget_daily_usd = String(budget_daily_usd);
 

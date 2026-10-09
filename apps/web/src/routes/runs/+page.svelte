@@ -433,7 +433,7 @@
   {/if}
 {/snippet}
 
-<div class="mx-auto flex w-full max-w-6xl flex-col gap-6">
+<div class="mx-auto flex w-full max-w-6xl flex-col gap-6 p-4 sm:p-6">
   <div>
     <h1 class="text-2xl font-semibold">Runs</h1>
     <p class="mt-1 text-[var(--color-text-muted)]">

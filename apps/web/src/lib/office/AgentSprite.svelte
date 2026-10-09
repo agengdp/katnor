@@ -1,49 +1,32 @@
 <script lang="ts">
-  import { spriteImage, SPRITE_PIXELS } from './spriteCanvas';
+  import { charBaseFor, spritePath } from '$lib/office/officeLayout';
 
   /**
-   * One agent's generated pixel character, as a standalone element - the
-   * same image the Office canvas blits, so an agent looks identical
-   * wherever it appears.
-   *
-   * Drawn into its own canvas rather than served as an `<img>`: the
-   * character is generated at runtime from the agent id (./sprite.ts), so
-   * there is no file to point an `<img>` at.
+   * One agent's character as a standalone element - the sprite used in
+   * the side panel, the decision popup, and the activity log, so an
+   * agent looks identical everywhere outside the 3D room.
    */
   let {
     agentId,
-    scale = 1,
+    isCeo = false,
+    height = 64,
     label = undefined,
   }: {
     agentId: string;
-    /** Whole-number multiple of the character's rasterised size (48px). Fractional values would put its pixels off the grid. */
-    scale?: number;
+    /** CEOs use the distinct assistant sprite, matching the floor. */
+    isCeo?: boolean;
+    /** Rendered height in px - width follows the sprite's own aspect. */
+    height?: number;
     label?: string | undefined;
   } = $props();
 
-  let canvasEl = $state<HTMLCanvasElement | undefined>(undefined);
-
-  const size = $derived(SPRITE_PIXELS * scale);
-
-  $effect(() => {
-    const canvas = canvasEl;
-    if (!canvas) return;
-    const image = spriteImage(agentId, 0);
-    const ctx = canvas.getContext('2d');
-    if (!image || !ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
-    // Off, so scaling up the already-rasterised character keeps its pixel
-    // edges instead of blurring them into a smudge.
-    ctx.imageSmoothingEnabled = false;
-    ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-  });
+  const src = $derived(spritePath(charBaseFor(agentId, isCeo), 'front-left'));
 </script>
 
-<canvas
-  bind:this={canvasEl}
-  width={size}
-  height={size}
-  style="width: {size}px; height: {size}px"
+<img
+  {src}
+  alt={label ?? ''}
   role={label ? 'img' : 'presentation'}
-  aria-label={label}
-></canvas>
+  draggable="false"
+  style="height: {height}px; width: auto; image-rendering: pixelated;"
+/>

@@ -6,6 +6,7 @@ export * from './ulid.js';
 export * from './listen.js';
 export * from './crypto.js';
 export * from './bootstrap.js';
+export { resolveDefaultModelName } from './bootstrap.js';
 export * from './schema/index.js';
 
 // Repositories are exported as namespaces (not `export *`) since several
@@ -28,5 +29,7 @@ export * as kgNodeRepo from './repositories/kgNode.js';
 export * as kgEdgeRepo from './repositories/kgEdge.js';
 export * as wikiPageRepo from './repositories/wikiPage.js';
 export * as providerConfigRepo from './repositories/providerConfig.js';
+export type { ProviderConfigRow } from './repositories/providerConfig.js';
 export * as userRepo from './repositories/user.js';
 export * as modelComboRepo from './repositories/modelCombo.js';
+export type { ModelComboRow, StoredModelEntries } from './repositories/modelCombo.js';

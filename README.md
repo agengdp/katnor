@@ -49,11 +49,11 @@ thing — both call `ensureCompanyBootstrap` / `createFirstUser` in `packages/db
 - **The browser wizard at `/setup`** — the default. Start the stack, open the dashboard, fill in
   three steps. Nothing is written until the last one, and it logs you straight in afterwards.
 - **`pnpm --filter @katnor/db db:seed`** — for scripted or unattended installs, where nobody is
-  there to fill in a form. Set `OWNER_EMAIL` and `OWNER_PASSWORD_HASH` in `.env` first (see the
+  there to fill in a form. Set `OWNER_PASSCODE_HASH` in `.env` first (see the
   comments there for how to generate the hash).
 
-**Setup closes permanently once one account exists.** Both paths refuse after that, and every
-further account is created by an already logged-in user under Settings > Team members.
+**Setup closes permanently once the single account exists.** Both paths refuse after that;
+the passcode is changed by the logged-in owner under Settings > Account.
 
 One deployment note: `setup.complete` is necessarily a public endpoint — an endpoint that creates
 the first login cannot itself require a login — so between starting a brand-new stack and

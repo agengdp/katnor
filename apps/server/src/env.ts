@@ -7,12 +7,11 @@ import { z } from 'zod';
  * variables from the repo-root `.env` via `env_file:`) or locally with the
  * shell environment already populated.
  *
- * `OWNER_EMAIL`/`OWNER_PASSWORD_HASH` (Phase 5's multi-user auth
- * bootstrap) are deliberately NOT part of this schema: they're read only
- * once, directly, by @katnor/db's src/seed.ts to create the very first
- * `user` row - this running server process never reads them itself, since
- * every login now goes through that table (src/auth.ts's `attemptLogin`),
- * not an env var.
+ * `OWNER_PASSCODE_HASH` (the single-user passcode bootstrap) is deliberately
+ * NOT part of this schema: it is read only once, directly, by @katnor/db's
+ * src/seed.ts to create the single `user` row - this running server process
+ * never reads it itself, since every login goes through that table
+ * (src/auth.ts's `attemptLogin`), not an env var.
  */
 
 /** Treats an unset/blank env var the same as "not provided" for zod's `.optional()`. */

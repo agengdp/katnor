@@ -1,4 +1,5 @@
 import type { ModelProvider } from '@katnor/core';
+import type { ProviderConfigRow } from '@katnor/db';
 import { AnthropicProvider } from './anthropic.js';
 import { ComboProvider } from './combo.js';
 import { GoogleProvider } from './google.js';
@@ -21,7 +22,28 @@ const googleProvider = new GoogleProvider();
 // module importing itself. Referencing `getProvider` here, above its own
 // textual declaration, works because a `function` declaration (not a
 // `const`/arrow function) is hoisted - see ./combo.ts's doc comment.
-const comboProvider = new ComboProvider(getProvider);
+const comboProvider = new ComboProvider(getProvider, resolveConnection);
+
+/**
+ * Binds a `provider_config` connection row to a fresh adapter instance
+ * that reads that row's key/base URL instead of the provider type's
+ * default row. Instances are NOT cached: they hold no mutable state
+ * beyond the row itself (Anthropic's env-key client cache is per-keyed-
+ * client, created per call), so sharing one would save nothing.
+ *
+ * Unknown provider types fall back to `getProvider` (default-row
+ * behavior) rather than throwing - connection rows are only
+ * schema-validated on write, and a type added later shouldn't crash
+ * older routers.
+ */
+export function resolveConnection(connection: ProviderConfigRow, _model: string): LLMProvider {
+  if (connection.provider === 'anthropic') return new AnthropicProvider(connection);
+  if (connection.provider === 'google') return new GoogleProvider(connection);
+  if (connection.provider === 'openai_compatible')
+    return new OpenAiCompatibleProvider('openai_compatible', connection);
+  if (connection.provider === 'ollama') return new OpenAiCompatibleProvider('ollama', connection);
+  return getProvider(connection.provider);
+}
 
 /**
  * Resolves a `ModelProvider` (from an agent's `model_config.provider`) to

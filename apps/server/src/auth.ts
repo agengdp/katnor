@@ -6,22 +6,17 @@ import { env } from './env.js';
 import { verifyPassword } from './crypto.js';
 
 /**
- * Multi-user session auth (PLAN.md Phase 5). A session token is a signed,
+ * Single-user session auth. A session token is a signed,
  * self-contained "this user id is logged in until this expiry" claim -
  * nothing is stored server-side, so `verifySessionToken` never needs a DB
  * round trip to validate one (it's called on every `/trpc/*` request via
- * src/trpc/context.ts). One consequence of that: removing a user
- * (Settings > Team members) doesn't instantly invalidate a session token
- * they already hold - it just expires normally within 7 days like any
- * other. Instant revocation would need a server-side session store this
- * design deliberately doesn't have; acceptable for a self-hosted app where
- * removing a teammate is a rare, low-stakes admin action, not something
- * this pass builds a bigger mechanism for.
+ * src/trpc/context.ts).
  *
- * This replaces the single-owner, env-var-only scheme (`OWNER_PASSWORD_HASH`
- * checked directly, no user identity at all) - see @katnor/db's
- * src/seed.ts for how the very first user account still gets created from
- * that same env var, one time, since there's no self-serve signup.
+ * Single-user by design: one Katnor install has exactly one account,
+ * created once at setup, that logs in with only a passcode - no email, no
+ * password. `attemptLogin` below checks the passcode against that single
+ * row, so there is no identifier to probe and no "which accounts exist"
+ * to leak - a wrong passcode and a missing setup are the same `null`.
  */
 
 export const SESSION_COOKIE_NAME = 'katnor_session';
@@ -137,18 +132,17 @@ export interface LoginResult {
 }
 
 /**
- * Looks up `email` in the `user` table and checks `password` against its
- * stored hash, returning a fresh session token + the public user shape on
- * success, `null` on any failure (no such user, or wrong password - never
- * distinguished in the response, so a login attempt can't be used to probe
- * which emails have accounts). Shared by the plain Hono `loginHandler`
- * below and the `auth.login` tRPC procedure (src/trpc/routers/auth.ts) so
- * the credential check lives in exactly one place.
+ * Checks `passcode` against the single account's stored hash, returning a
+ * fresh session token + the public user shape on success, `null` on any
+ * failure (no account yet, or wrong passcode - never distinguished).
+ * Shared by the plain Hono `loginHandler` below and the `auth.login`
+ * tRPC procedure (src/trpc/routers/auth.ts) so the credential check lives
+ * in exactly one place.
  */
-export async function attemptLogin(email: string, password: string): Promise<LoginResult | null> {
-  const user = await userRepo.getByEmail(email);
+export async function attemptLogin(passcode: string): Promise<LoginResult | null> {
+  const user = await userRepo.getSingleUser();
   if (!user) return null;
-  if (!verifyPassword(password, user.password_hash)) return null;
+  if (!verifyPassword(passcode, user.password_hash)) return null;
   const { password_hash: _passwordHash, ...publicUser } = user;
   return { token: createSessionToken(user.id), user: publicUser };
 }
@@ -171,8 +165,8 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
 };
 
 /**
- * Plain Hono login handler: reads `{ email: string, password: string }`
- * from the JSON body, and on success sets the session cookie and responds
+ * Plain Hono login handler: reads `{ passcode: string }` from the JSON
+ * body, and on success sets the session cookie and responds
  * `{ ok: true }`. Like `requireAuth`, this is not mounted by src/index.ts
  * by default (the web app logs in via the `auth.login` tRPC procedure) -
  * it's exported so a non-tRPC client (curl, a health-check script, a
@@ -181,16 +175,15 @@ export const requireAuth: MiddlewareHandler = async (c, next) => {
 export async function loginHandler(c: Context): Promise<Response> {
   const body: unknown = await c.req.json().catch(() => null);
   const record = body !== null && typeof body === 'object' ? (body as Record<string, unknown>) : {};
-  const email = typeof record.email === 'string' ? record.email : undefined;
-  const password = typeof record.password === 'string' ? record.password : undefined;
+  const passcode = typeof record.passcode === 'string' ? record.passcode : undefined;
 
-  if (!email || !password) {
-    return c.json({ ok: false, error: 'email and password are required' }, 400);
+  if (!passcode) {
+    return c.json({ ok: false, error: 'passcode is required' }, 400);
   }
 
-  const result = await attemptLogin(email, password);
+  const result = await attemptLogin(passcode);
   if (!result) {
-    return c.json({ ok: false, error: 'invalid email or password' }, 401);
+    return c.json({ ok: false, error: 'invalid passcode' }, 401);
   }
 
   c.header('Set-Cookie', serializeSessionCookie(result.token), { append: true });

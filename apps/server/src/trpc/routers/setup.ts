@@ -17,19 +17,20 @@ import { publicProcedure, router } from '../trpc.js';
  * First-run setup, done in a browser (apps/web's /setup route).
  *
  * The problem this solves: a fresh `docker compose up` produces a stack
- * nobody can log into. The first account cannot be created through the
+ * nobody can log into. The single account cannot be created through the
  * dashboard, because the dashboard requires being logged in - so until
  * now the only way in was `pnpm db:seed` with a pre-computed
- * `OWNER_PASSWORD_HASH`, which means a terminal, a checkout, and knowing
- * how to hash a password. This router is the other door.
+ * `OWNER_PASSCODE_HASH`, which means a terminal, a checkout, and knowing
+ * how to hash a passcode. This router is the other door.
  *
  * Both procedures here are `publicProcedure`, and they have to be - a
- * login check on the endpoint that creates the first login is a
+ * login check on the endpoint that creates the single login is a
  * contradiction. What keeps that safe is that `complete` refuses the
- * moment any user account exists (@katnor/db's `createFirstUser`, which
- * does the check and the insert under an advisory lock). The window in
- * which this is usable is "a database with zero users", and it closes
- * permanently the first time anyone walks through it.
+ * moment the single user account exists (@katnor/db's `createFirstUser`, which
+ * which does the check and the insert under an advisory lock). The window
+ * in which this is usable is "a database with zero users", and it closes
+ * permanently the first time anyone walks through it - single-user
+ * install, so there is never a second account.
  *
  * That window is a real consideration when deploying: between starting the
  * stack and completing setup, whoever reaches the server first becomes its
@@ -42,11 +43,9 @@ import { publicProcedure, router } from '../trpc.js';
 const setupInputSchema = z.object({
   companyName: z.string().trim().min(1).max(120),
   ownerName: z.string().trim().min(1).max(120),
-  ownerEmail: z.string().email(),
-  // Matches @katnor/core's `createUserInputSchema` and the `users.create`
-  // procedure, so the account made here is subject to the same rule as
-  // every account made later.
-  ownerPassword: z.string().min(8),
+  // The only credential. Min 4 so a short memorable passcode works, but a
+  // 1-char one does not - matches @katnor/core's `createUserInputSchema`.
+  ownerPasscode: z.string().min(4),
   /**
    * Optional, because setup must be able to finish without one: someone
    * running entirely on a local Ollama has no key to give, and blocking
@@ -89,13 +88,13 @@ export const setupRouter = router({
   }),
 
   /**
-   * Creates the company, the system CEO, `#general` and the first user
+   * Creates the company, the system CEO, `#general` and the single user
    * account, then logs that user straight in.
    *
    * Logging in here rather than bouncing to /login is not just
-   * convenience: the credentials were typed seconds ago into a form that
+   * convenience: the passcode was typed seconds ago into a form that
    * is about to disappear, and sending someone to a login page to retype
-   * them is the kind of small insult that makes people wonder whether
+   * it is the kind of small insult that makes people wonder whether
    * setup actually worked.
    */
   complete: publicProcedure.input(setupInputSchema).mutation(async ({ ctx, input }) => {
@@ -113,8 +112,7 @@ export const setupRouter = router({
 
     const owner = await createFirstUser({
       name: input.ownerName,
-      email: input.ownerEmail,
-      password: input.ownerPassword,
+      passcode: input.ownerPasscode,
     }).catch((err: unknown) => {
       // The real guard, as opposed to the early check above: this is the
       // one that ran under the advisory lock, so a request that loses the
@@ -135,6 +133,7 @@ export const setupRouter = router({
     if (input.provider) {
       await ctx.db.insert(providerConfig).values({
         id: ulid(),
+        name: input.provider.name,
         provider: input.provider.name,
         api_key_encrypted: encryptSecret(input.provider.apiKey),
         base_url: null,

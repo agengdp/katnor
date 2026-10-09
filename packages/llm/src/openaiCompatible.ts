@@ -1,5 +1,5 @@
 import type { ModelProvider } from '@katnor/core';
-import { decryptSecret, providerConfigRepo } from '@katnor/db';
+import { decryptSecret, providerConfigRepo, type ProviderConfigRow } from '@katnor/db';
 import { estimateCostFromRates, numericColumnToRate } from './pricing.js';
 import type {
   ContentBlock,
@@ -84,9 +84,12 @@ interface ResolvedConfig {
 async function readConfig(
   provider: OpenAiCompatibleProviderId,
   defaultBaseUrl?: string,
+  connection?: ProviderConfigRow,
 ): Promise<ResolvedConfig | { error: string }> {
   try {
-    const row = await providerConfigRepo.getByProvider(provider);
+    // A bound connection (Model entry addressing a specific connection)
+    // is authoritative - the router already checked enabled/exists.
+    const row = connection ?? (await providerConfigRepo.getByProvider(provider));
     if (!row) {
       if (defaultBaseUrl) {
         return {
@@ -100,7 +103,7 @@ async function readConfig(
         error: `No "${provider}" provider is configured yet - add a base URL under Settings > Providers.`,
       };
     }
-    if (!row.enabled) {
+    if (!connection && !row.enabled) {
       return { error: `The "${provider}" provider is disabled in Settings > Providers.` };
     }
     const baseUrl = row.base_url ? row.base_url.replace(/\/+$/, '') : defaultBaseUrl;
@@ -260,11 +263,19 @@ export class OpenAiCompatibleProvider implements LLMProvider {
   readonly id: ModelProvider;
   private readonly provider: OpenAiCompatibleProviderId;
   private readonly defaultBaseUrl: string | undefined;
+  private readonly connection: ProviderConfigRow | undefined;
 
-  constructor(provider: OpenAiCompatibleProviderId) {
+  /**
+   * `connection` binds this instance to one `provider_config` row
+   * (a Model entry's connection) - `step()` reads that row's key/base
+   * URL instead of the provider type's default row. Unbound (no arg)
+   * preserves the old behavior: resolve the default row per type.
+   */
+  constructor(provider: OpenAiCompatibleProviderId, connection?: ProviderConfigRow) {
     this.id = provider;
     this.provider = provider;
     this.defaultBaseUrl = provider === 'ollama' ? OLLAMA_DEFAULT_BASE_URL : undefined;
+    this.connection = connection;
   }
 
   capabilities(_model: string): ProviderCapabilities {
@@ -284,7 +295,7 @@ export class OpenAiCompatibleProvider implements LLMProvider {
   }
 
   async step(input: StepInput): Promise<StepResult> {
-    const config = await readConfig(this.provider, this.defaultBaseUrl);
+    const config = await readConfig(this.provider, this.defaultBaseUrl, this.connection);
     if ('error' in config) {
       return errorResult(config.error);
     }

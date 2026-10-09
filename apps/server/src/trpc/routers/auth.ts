@@ -26,11 +26,11 @@ export const authRouter = router({
   }),
 
   login: publicProcedure
-    .input(z.object({ email: z.string().email(), password: z.string().min(1) }))
+    .input(z.object({ passcode: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
-      const result = await attemptLogin(input.email, input.password);
+      const result = await attemptLogin(input.passcode);
       if (!result) {
-        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid email or password' });
+        throw new TRPCError({ code: 'UNAUTHORIZED', message: 'Invalid passcode' });
       }
       // `resHeaders` is applied to the actual outgoing HTTP response by
       // tRPC's fetch adapter (see src/index.ts) - this is the tRPC
