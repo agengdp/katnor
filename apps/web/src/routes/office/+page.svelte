@@ -9,6 +9,7 @@
   import AgentSprite from '$lib/office/AgentSprite.svelte';
   import DecisionPopup from '$lib/office/DecisionPopup.svelte';
   import FloatingActivity from '$lib/office/FloatingActivity.svelte';
+  import OfficeCommand from '$lib/office/OfficeCommand.svelte';
 
   /**
    * PLAN.md 4.8's office, rendered as a real-time 3D room (Three.js) -
@@ -204,14 +205,22 @@
     onScene={(s) => (officeScene = s)}
   />
 
+  <!-- Command bar: talk to the room (specific @mentions or everybody).
+       `shifted` docks it left of the agent side panel. -->
+  <OfficeCommand {agents} shifted={selectedAgent !== null} />
+
   <!-- Floor-focus pills (top-left) carry the page label; no separate
        floating title — that pill row IS the header now. -->
   {#if loadError}
-    <p class="pointer-events-none absolute left-4 top-14 z-40 max-w-sm rounded-md bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-danger)] shadow-lg">
+    <p
+      class="pointer-events-none absolute left-4 top-14 z-40 max-w-sm rounded-md bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-danger)] shadow-lg"
+    >
       {loadError}
     </p>
   {:else if loading}
-    <p class="pointer-events-none absolute left-4 top-14 z-40 max-w-sm rounded-md bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-text-muted)] shadow-lg">
+    <p
+      class="pointer-events-none absolute left-4 top-14 z-40 max-w-sm rounded-md bg-[var(--color-surface)] px-2.5 py-1 text-xs text-[var(--color-text-muted)] shadow-lg"
+    >
       Loading…
     </p>
   {/if}
@@ -254,81 +263,82 @@
         </button>
       </div>
 
-          <p class="text-xs">
-            <span class="font-medium">Status:</span>
-            <span class="capitalize">{state.replace('_', ' ')}</span>{status.detail
-              ? ` - ${status.detail}`
-              : ''}
-          </p>
+      <p class="text-xs">
+        <span class="font-medium">Status:</span>
+        <span class="capitalize">{state.replace('_', ' ')}</span>{status.detail
+          ? ` - ${status.detail}`
+          : ''}
+      </p>
 
-          {#if selectedAgent.persona.bio}
-            <p class="text-xs text-[var(--color-text-muted)]">{selectedAgent.persona.bio}</p>
-          {/if}
-          <p class="text-xs text-[var(--color-text-muted)]">
-            {selectedAgent.model_config.provider} · {selectedAgent.model_config.model}
-          </p>
+      {#if selectedAgent.persona.bio}
+        <p class="text-xs text-[var(--color-text-muted)]">{selectedAgent.persona.bio}</p>
+      {/if}
+      <p class="text-xs text-[var(--color-text-muted)]">
+        {selectedAgent.model_config.provider} · {selectedAgent.model_config.model}
+      </p>
 
-          <div class="flex flex-wrap gap-2">
-            <a
-              href={`/runs?agent=${selectedAgent.id}`}
-              class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
-            >
-              View trace
-            </a>
-            <a
-              href="/team"
-              class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
-            >
-              Edit persona/model
-            </a>
-          </div>
+      <div class="flex flex-wrap gap-2">
+        <a
+          href={`/runs?agent=${selectedAgent.id}`}
+          class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
+        >
+          View trace
+        </a>
+        <a
+          href="/team"
+          class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
+        >
+          Edit persona/model
+        </a>
+      </div>
 
-          <div class="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-3">
-            <span class="text-xs text-[var(--color-text-muted)]">Kirim ke lantai</span>
-            <div class="flex flex-wrap gap-1.5">
-              {#each FLOOR_ORDER as f (f.id)}
-                <button
-                  type="button"
-                  onclick={() => sendToFloor(f.id)}
-                  class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
-                >
-                  <span aria-hidden="true">{f.icon}</span> {f.label}
-                </button>
-              {/each}
-            </div>
-            {#if orderSent}
-              <p class="text-xs text-[var(--color-success)]">{orderSent}</p>
-            {/if}
-          </div>
-
-          <form
-            class="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3"
-            onsubmit={(event) => {
-              event.preventDefault();
-              sendQuickChat();
-            }}
-          >
-            <label class="flex flex-col gap-1">
-              <span class="text-xs text-[var(--color-text-muted)]">Quick message</span>
-              <textarea
-                rows="2"
-                bind:value={chatText}
-                class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-xs"
-              ></textarea>
-            </label>
-            {#if chatError}
-              <p class="text-xs text-[var(--color-danger)]">{chatError}</p>
-            {:else if chatSent}
-              <p class="text-xs text-[var(--color-success)]">Sent.</p>
-            {/if}
+      <div class="flex flex-col gap-1.5 border-t border-[var(--color-border)] pt-3">
+        <span class="text-xs text-[var(--color-text-muted)]">Kirim ke lantai</span>
+        <div class="flex flex-wrap gap-1.5">
+          {#each FLOOR_ORDER as f (f.id)}
             <button
-              type="submit"
-              disabled={chatSending || chatText.trim().length === 0}
-              class="self-start rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+              type="button"
+              onclick={() => sendToFloor(f.id)}
+              class="btn-press rounded-md border border-[var(--color-border)] px-2 py-1 text-xs hover:bg-[var(--color-surface-muted)]"
             >
-              {chatSending ? 'Sending…' : 'Send'}
+              <span aria-hidden="true">{f.icon}</span>
+              {f.label}
             </button>
-          </form>
+          {/each}
+        </div>
+        {#if orderSent}
+          <p class="text-xs text-[var(--color-success)]">{orderSent}</p>
+        {/if}
+      </div>
+
+      <form
+        class="flex flex-col gap-2 border-t border-[var(--color-border)] pt-3"
+        onsubmit={(event) => {
+          event.preventDefault();
+          sendQuickChat();
+        }}
+      >
+        <label class="flex flex-col gap-1">
+          <span class="text-xs text-[var(--color-text-muted)]">Quick message</span>
+          <textarea
+            rows="2"
+            bind:value={chatText}
+            class="rounded-md border border-[var(--color-border)] bg-[var(--color-bg)] p-2 text-xs"
+          ></textarea>
+        </label>
+        {#if chatError}
+          <p class="text-xs text-[var(--color-danger)]">{chatError}</p>
+        {:else if chatSent}
+          <p class="text-xs text-[var(--color-success)]">Sent.</p>
+        {/if}
+        <button
+          type="submit"
+          disabled={chatSending || chatText.trim().length === 0}
+          class="self-start rounded-md bg-[var(--color-accent)] px-3 py-1.5 text-xs font-medium text-[var(--color-accent-contrast)] disabled:opacity-50"
+        >
+          {chatSending ? 'Sending…' : 'Send'}
+        </button>
+      </form>
     </div>
   {/if}
 
